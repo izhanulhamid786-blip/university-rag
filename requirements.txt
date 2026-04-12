@@ -1,0 +1,12 @@
+streamlit
+python-dotenv
+google-generativeai
+langchain
+langchain-community
+chromadb
+sentence-transformers
+rank-bm25
+pymupdf
+beautifulsoup4
+requests
+pip install python-docx openpyxl python-pptx 

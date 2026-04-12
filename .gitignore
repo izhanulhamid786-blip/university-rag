@@ -1,0 +1,15 @@
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.log
+.env
+
+vector_db/
+data/pdfs/
+data/structured/
+data/index.json
+data/.visited_urls.txt
+data/.doc_hashes.json
+
+.streamlit/
