@@ -1,55 +1,146 @@
-# Central University of Kashmir RAG
+# University RAG
 
-Production-hardened university assistant with:
+A production-ready university RAG assistant that crawls official university data, indexes documents and tables, and answers student and staff queries with source-grounded responses.
 
-- Playwright crawler for SPA content and documents
-- Clean ingestion from crawler output
-- Hybrid retrieval with Chroma + BM25
-- Cross-encoder reranking
-- Streamlit chat app with source links
+## What It Does
+
+- Crawls a university website, including SPA routes and linked documents
+- Extracts content from HTML, PDF, DOCX, XLSX, TXT, CSV, JSON, and PPTX files
+- Preserves table-like data for better staff directories, contact records, and count queries
+- Builds a hybrid retrieval pipeline using Chroma vector search and BM25
+- Improves ranking with a cross-encoder reranker
+- Resolves follow-up questions like pronoun-based references in chat history
+- Serves a Streamlit chat app with grounded answers and source links
+
+## Stack
+
+- Python
+- Streamlit
+- ChromaDB
+- Sentence Transformers
+- BM25
+- Google Gemini API
+- Playwright
+
+## Project Structure
+
+```text
+app.py                Streamlit chat application
+crawler.py            Website crawler and document extractor
+ingest/loader.py      Loads crawler/manual data into normalized documents
+ingest/chunker.py     Splits documents into retrieval chunks
+ingest/build_db.py    Builds the Chroma vector database
+rag/retriever.py      Hybrid retrieval and heuristic ranking
+rag/reranker.py       Cross-encoder reranking
+rag/memory.py         Follow-up question rewriting
+rag/pipeline.py       End-to-end retrieval and generation pipeline
+rag/prompt.py         Grounded answer prompt builder
+data/structured/      Structured crawler output used by the RAG pipeline
+data/manual/          Optional manually added files for indexing
+vector_db/            Local Chroma database
+```
 
 ## Setup
 
 1. Create and activate a virtual environment.
-2. Install dependencies:
+
+```powershell
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+```
+
+2. Install dependencies.
 
 ```powershell
 pip install -r requirements.txt
-playwright install chromium
+python -m playwright install chromium
 ```
 
-3. Copy `.env.example` to `.env` and add `GOOGLE_API_KEY`.
-   The default generator is `gemini-2.5-pro` for answer quality. If you want lower latency and cost, override it with `GENERATOR_MODEL=gemini-2.5-flash`.
+3. Create your environment file.
 
-## Data Flow
+```powershell
+Copy-Item .env.example .env
+```
 
-1. Crawl the university site:
+4. Add your Gemini API key to `.env`.
+
+```env
+GOOGLE_API_KEY=your_key_here
+```
+
+## Environment Variables
+
+Key runtime settings are defined in `.env.example`.
+
+- `GOOGLE_API_KEY`: Gemini API key
+- `GENERATOR_MODEL`: main answer generation model
+- `FALLBACK_GENERATOR_MODEL`: fallback generation model
+- `RAG_EMBED_MODEL`: embedding model for vector search
+- `RAG_RERANK_MODEL`: cross-encoder reranker
+- `RAG_RETRIEVAL_K`: number of retrieved candidates
+- `RAG_RERANK_TOP_K`: final number of chunks passed into prompt building
+- `RAG_RERANK_CANDIDATES`: number of candidates sent to reranking
+
+## Run The Project
+
+If you already have crawler output and an existing vector DB:
+
+```powershell
+.\venv\Scripts\Activate.ps1
+streamlit run app.py
+```
+
+For a full refresh:
+
+1. Crawl the site
 
 ```powershell
 python crawler.py
 ```
 
-2. Build or rebuild the vector database:
+2. Rebuild the vector database
 
 ```powershell
 python -m ingest.build_db --reset
 ```
 
-3. Start the app:
+3. Start the app
 
 ```powershell
 streamlit run app.py
 ```
 
-## Data Sources
+## Data Notes
 
-- `data/structured/`: primary crawler output used by the production RAG pipeline
-- `data/manual/`: curated extra files you want indexed
-- `data/`: legacy raw files are excluded by default to avoid noisy retrieval
+- `data/structured/` is the primary source used for retrieval
+- `data/manual/` can be used to add curated files
+- `data/` root files are excluded from retrieval by default unless explicitly enabled
+- `vector_db/` is generated locally and should not be committed
 
-## Publish Checklist
+## Current Retrieval Features
 
-- Set `GOOGLE_API_KEY` in `.env`
-- Run the crawler until `data/structured/` is populated with clean records
-- Rebuild the vector DB with `python -m ingest.build_db --reset`
-- Verify the sidebar in the app reports a ready knowledge base
+- Hybrid dense + sparse retrieval
+- Staff/contact-aware ranking boosts
+- Better handling of directory-style tables
+- Follow-up question rewriting for conversational queries
+- Source deduplication and grounded response generation
+
+## Recommended Workflow
+
+```powershell
+.\venv\Scripts\Activate.ps1
+python crawler.py
+python -m ingest.build_db --reset
+streamlit run app.py
+```
+
+## Public Repo Checklist
+
+- Keep `.env` private
+- Rebuild `vector_db/` locally, not in Git
+- Review raw files under `data/` before publishing them
+- Update the repository description on GitHub for better discoverability
+
+## License
+
+No license has been added yet.

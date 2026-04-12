@@ -1,12 +1,23 @@
 streamlit
 python-dotenv
-google-generativeai
-langchain
-langchain-community
+google-genai
 chromadb
 sentence-transformers
 rank-bm25
+langchain
+langchain-community
+langchain-text-splitters
 pymupdf
 beautifulsoup4
+lxml
 requests
-pip install python-docx openpyxl python-pptx 
+playwright
+pdfplumber
+tqdm
+colorama
+python-docx
+openpyxl
+python-pptx
+pytesseract
+pdf2image
+apscheduler
