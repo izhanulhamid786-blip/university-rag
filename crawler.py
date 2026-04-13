@@ -1,23 +1,14 @@
 """
 crawler.py — Central University of Kashmir  |  Interactive Playwright Crawler v4
-=================================================================================
-PROBLEM SOLVED: CUK uses Angular hash routing + JS click handlers.
+CUK uses Angular hash routing + JS click handlers.
 Normal link discovery finds nothing. This crawler INTERACTS with the page:
   1. Clicks every navbar item
   2. Clicks every "View All / View More / Read More" button
   3. Intercepts every network request to capture API-served PDF/doc URLs
   4. Scrolls pages to trigger lazy-loaded content
-  5. Falls back to href harvesting for any plain anchor tags
+  5. Falls back to href harvesting for any plain anchor tags"""
 
-INSTALL:
-  pip install playwright pdfplumber pytesseract pdf2image python-docx
-              openpyxl beautifulsoup4 lxml tqdm colorama apscheduler
-  playwright install chromium
-  # Tesseract (for scanned PDFs):
-  # Windows → https://github.com/UB-Mannheim/tesseract/wiki
-  # Linux   → sudo apt install tesseract-ocr tesseract-ocr-hin
-  # Mac     → brew install tesseract
-"""
+
 
 import io
 import re
