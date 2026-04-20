@@ -220,10 +220,15 @@ def _build_sources(chunks: list[dict]) -> list[dict]:
         seen.add(key)
         sources.append(
             {
+                "citation": len(sources) + 1,
                 "label": chunk.get("title") or key,
                 "url": chunk.get("source_url"),
                 "path": chunk.get("source_path"),
                 "category": chunk.get("category", "general"),
+                "preview": _snippet(_chunk_body(chunk), limit=220),
+                "matched_by": chunk.get("matched_by", []),
+                "rerank_score": chunk.get("rerank_score"),
+                "final_score": chunk.get("final_score"),
             }
         )
     return sources
@@ -241,32 +246,61 @@ def app_status() -> dict:
     }
 
 
-def run(query: str, history: list[dict]):
+def run_with_metadata(
+    query: str,
+    history: list[dict],
+    *,
+    answer_style: str = "balanced",
+):
     clean_query = (query or "").strip()
+    metadata = {
+        "query": clean_query,
+        "rewritten_query": clean_query,
+        "candidate_count": 0,
+        "rerank_input_count": 0,
+        "selected_chunk_count": 0,
+        "timings_ms": {},
+    }
     if not clean_query:
-        return _message_stream("Please ask a question about the university."), []
+        return _message_stream("Please ask a question about the university."), [], metadata
 
     started = time.perf_counter()
     smart_query = rewrite_query(clean_query, history)
+    metadata["rewritten_query"] = smart_query
     log.info("Smart query: %s", smart_query)
     after_rewrite = time.perf_counter()
 
     candidates = hybrid_retrieve(smart_query)
+    metadata["candidate_count"] = len(candidates)
     log.info("Retrieved %s candidates", len(candidates))
     after_retrieve = time.perf_counter()
     if not candidates:
+        metadata["timings_ms"] = {
+            "rewrite": round((after_rewrite - started) * 1000, 1),
+            "retrieve": round((after_retrieve - after_rewrite) * 1000, 1),
+            "total": round((after_retrieve - started) * 1000, 1),
+        }
         return _message_stream(
             "I don't have that information. Please contact the university office directly."
-        ), []
+        ), [], metadata
 
     settings = get_settings()
     rerank_limit = _rerank_candidate_limit(smart_query, len(candidates))
     rerank_input = candidates[:rerank_limit]
+    metadata["rerank_input_count"] = len(rerank_input)
     top_chunks = rerank(smart_query, rerank_input, top_k=settings.rerank_top_k)
+    metadata["selected_chunk_count"] = len(top_chunks)
     after_rerank = time.perf_counter()
     sources = _build_sources(top_chunks)
-    prompt = build_prompt(smart_query, top_chunks, history)
+    prompt = build_prompt(smart_query, top_chunks, history, answer_style=answer_style)
     after_prompt = time.perf_counter()
+    metadata["timings_ms"] = {
+        "rewrite": round((after_rewrite - started) * 1000, 1),
+        "retrieve": round((after_retrieve - after_rewrite) * 1000, 1),
+        "rerank": round((after_rerank - after_retrieve) * 1000, 1),
+        "prompt": round((after_prompt - after_rerank) * 1000, 1),
+        "total": round((after_prompt - started) * 1000, 1),
+    }
     log.info(
         "Pipeline timings | rewrite=%.3fs retrieve=%.3fs rerank=%.3fs prompt=%.3fs total=%.3fs candidates=%s rerank_input=%s",
         after_rewrite - started,
@@ -277,7 +311,17 @@ def run(query: str, history: list[dict]):
         len(candidates),
         len(rerank_input),
     )
-    return _generation_stream(prompt, query=smart_query, fallback_chunks=top_chunks), sources
+    return _generation_stream(prompt, query=smart_query, fallback_chunks=top_chunks), sources, metadata
+
+
+def run(
+    query: str,
+    history: list[dict],
+    *,
+    answer_style: str = "balanced",
+):
+    stream, sources, _ = run_with_metadata(query, history, answer_style=answer_style)
+    return stream, sources
 
 
 if __name__ == "__main__":

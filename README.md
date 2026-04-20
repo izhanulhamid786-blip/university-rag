@@ -114,7 +114,7 @@ streamlit run app.py
 
 - `data/structured/` is the primary source used for retrieval
 - `data/manual/` can be used to add curated files
-- `data/` root files are excluded from retrieval by default unless explicitly enabled
+- `data/` root files are included in retrieval by default so locally added PDFs and other raw files are searchable
 - `vector_db/` is generated locally and should not be committed
 
 ## Current Retrieval Features

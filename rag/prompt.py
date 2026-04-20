@@ -7,8 +7,32 @@ if __package__ in {None, ""}:
 from rag.settings import get_settings
 
 
-def build_prompt(query: str, chunks: list[dict], history: list[dict]) -> str:
+STYLE_GUIDANCE = {
+    "concise": (
+        "- Keep the answer compact: a direct answer first, then only the most important supporting points.\n"
+        "- Use bullets only when they make the answer easier to scan.\n"
+    ),
+    "detailed": (
+        "- Give a short summary first, then organize the answer into clear sections or bullets when helpful.\n"
+        "- Include practical next steps, eligibility, dates, or documents only when the context supports them.\n"
+    ),
+    "balanced": (
+        "- Start with a direct answer, then add short, well-grouped details that are easy to scan.\n"
+        "- Use bullets for steps, requirements, dates, or lists when the context contains them.\n"
+    ),
+}
+
+
+def build_prompt(
+    query: str,
+    chunks: list[dict],
+    history: list[dict],
+    *,
+    answer_style: str = "balanced",
+) -> str:
     settings = get_settings()
+    style_key = (answer_style or "balanced").strip().lower()
+    style_guidance = STYLE_GUIDANCE.get(style_key, STYLE_GUIDANCE["balanced"])
 
     context_parts = []
     total_chars = 0
@@ -46,6 +70,11 @@ Rules:
 - For staff, teacher, faculty, or office-contact questions, prefer official role/designation and direct contact fields from the context.
 - When the context contains table rows or row-like records, keep values matched to the correct row and do not mix cells from different rows.
 - For count questions, only count what is explicitly listed or stated in the context, and say when the total is incomplete.
+- Make the answer easy to scan. Use short sections, bullets, or numbered steps when they improve clarity.
+- Cite grounded claims, but keep citations tidy.
+- Prefer one citation block at the end of a sentence, bullet, or short paragraph instead of repeating the same citations after every line.
+- Mention official URLs from the context when they directly help the student act on the answer.
+{style_guidance}
 {history_text}
 Context:
 {context}

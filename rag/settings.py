@@ -76,6 +76,6 @@ def get_settings() -> Settings:
         rerank_candidate_k=max(4, _env_int("RAG_RERANK_CANDIDATES", 12)),
         max_context_chars=max(4000, _env_int("RAG_MAX_CONTEXT_CHARS", 12000)),
         include_manual_raw=_env_bool("RAG_INCLUDE_MANUAL_RAW", True),
-        include_legacy_root_raw=_env_bool("RAG_INCLUDE_LEGACY_ROOT_RAW", False),
+        include_legacy_root_raw=_env_bool("RAG_INCLUDE_LEGACY_ROOT_RAW", True),
         local_files_only=_env_bool("RAG_LOCAL_FILES_ONLY", False),
     )

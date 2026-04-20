@@ -6,10 +6,11 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from ingest.chunker import chunk
-from ingest.loader import load_structured_records
+from ingest.loader import load_all, load_structured_records
 from rag.memory import rewrite_query
 from rag import pipeline
 from rag.prompt import build_prompt
+from rag import reranker
 from rag.retriever import hybrid_retrieve
 
 
@@ -59,6 +60,38 @@ class SmokeTests(unittest.TestCase):
             self.assertIn("Table 1:", docs[0]["text"])
             self.assertIn("Name: Prof. Shahid Rasool", docs[0]["text"])
             self.assertTrue(docs[0]["has_table"])
+
+    def test_load_all_can_include_root_files_alongside_structured_records(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            (root / "structured").mkdir()
+            (root / "manual").mkdir()
+
+            structured_payload = {
+                "type": "html",
+                "url": "https://cukashmir.ac.in/#/admissions",
+                "title": "Admissions",
+                "category": "admissions",
+                "text": "Structured crawler record.",
+                "outlinks": [],
+                "notices": [],
+            }
+            (root / "structured" / "record.json").write_text(json.dumps(structured_payload), encoding="utf-8")
+            (root / "legacy-note.txt").write_text("Root level notice for students.", encoding="utf-8")
+
+            fake_settings = SimpleNamespace(
+                structured_dir=root / "structured",
+                manual_dir=root / "manual",
+                data_dir=root,
+                include_manual_raw=False,
+                include_legacy_root_raw=True,
+            )
+
+            with patch("ingest.loader.get_settings", return_value=fake_settings):
+                docs = load_all(root)
+
+            self.assertEqual(len(docs), 2)
+            self.assertEqual({doc["source_kind"] for doc in docs}, {"crawler", "legacy_raw"})
 
     def test_chunker_preserves_titles_and_urls(self):
         docs = [
@@ -208,6 +241,59 @@ class SmokeTests(unittest.TestCase):
 
         self.assertEqual(len(rerank_mock.call_args.args[1]), 8)
 
+    def test_prompt_accepts_detailed_answer_style(self):
+        prompt = build_prompt(
+            "How do I apply?",
+            [
+                {
+                    "title": "Admissions",
+                    "source_url": "https://cukashmir.ac.in/#/admissions",
+                    "category": "admissions",
+                    "text": "Admissions are open with listed steps.",
+                }
+            ],
+            [],
+            answer_style="detailed",
+        )
+
+        self.assertIn("Give a short summary first", prompt)
+        self.assertIn("Answer with citations:", prompt)
+
+    def test_run_with_metadata_returns_source_preview_and_counts(self):
+        history = []
+        candidates = [
+            {
+                "title": "Admissions Notice",
+                "source_url": "https://cukashmir.ac.in/#/admissions",
+                "source_path": "data/structured/admissions.json",
+                "category": "admissions",
+                "text": "Admissions are open for 2026. Students must complete the online application form.",
+                "matched_by": ["dense", "bm25"],
+                "final_score": 0.42,
+                "rerank_score": 2.1,
+            }
+        ]
+
+        with patch("rag.pipeline.rewrite_query", return_value="admission process for 2026"), \
+             patch("rag.pipeline.hybrid_retrieve", return_value=candidates), \
+             patch("rag.pipeline.rerank", return_value=candidates), \
+             patch("rag.pipeline.get_settings", return_value=SimpleNamespace(rerank_top_k=5, rerank_candidate_k=12)), \
+             patch("rag.pipeline._generation_stream", return_value=iter([pipeline.TextChunk("ok")])):
+            stream, sources, details = pipeline.run_with_metadata(
+                "What is the admission process?",
+                history,
+                answer_style="balanced",
+            )
+
+        self.assertEqual(list(stream)[0].text, "ok")
+        self.assertEqual(details["candidate_count"], 1)
+        self.assertEqual(details["rerank_input_count"], 1)
+        self.assertEqual(details["selected_chunk_count"], 1)
+        self.assertEqual(details["rewritten_query"], "admission process for 2026")
+        self.assertEqual(sources[0]["citation"], 1)
+        self.assertIn("Admissions are open for 2026", sources[0]["preview"])
+        self.assertEqual(sources[0]["matched_by"], ["dense", "bm25"])
+
     def test_staff_contact_queries_prefer_contact_records(self):
         settings = SimpleNamespace(retrieval_k=5)
         contact_item = {
@@ -247,6 +333,38 @@ class SmokeTests(unittest.TestCase):
             results = hybrid_retrieve("what is Prof Shahid Rasool contact email", k=2)
 
         self.assertEqual(results[0]["chunk_id"], "contact-1")
+
+    def test_rerank_keeps_relative_order_for_all_low_scores_without_warning(self):
+        chunks = [
+            {"title": "Alpha", "text": "alpha text"},
+            {"title": "Beta", "text": "beta text"},
+            {"title": "Gamma", "text": "gamma text"},
+        ]
+        mock_model = SimpleNamespace(predict=lambda pairs: [-3.8, -3.1, -4.2])
+
+        with patch("rag.reranker.get_settings", return_value=SimpleNamespace(rerank_top_k=2)), \
+             patch("rag.reranker._reranker", return_value=mock_model), \
+             patch("rag.reranker.log.warning") as warning_mock, \
+             patch("rag.reranker.log.info") as info_mock:
+            results = reranker.rerank("latest btech result", chunks, top_k=2)
+
+        self.assertEqual([item["title"] for item in results], ["Beta", "Alpha"])
+        warning_mock.assert_not_called()
+        info_mock.assert_called_once()
+
+    def test_rerank_filters_low_scores_when_relevant_results_exist(self):
+        chunks = [
+            {"title": "Top", "text": "top text"},
+            {"title": "Drop", "text": "drop text"},
+            {"title": "Keep", "text": "keep text"},
+        ]
+        mock_model = SimpleNamespace(predict=lambda pairs: [0.9, -3.5, -1.0])
+
+        with patch("rag.reranker.get_settings", return_value=SimpleNamespace(rerank_top_k=3)), \
+             patch("rag.reranker._reranker", return_value=mock_model):
+            results = reranker.rerank("admissions", chunks, top_k=3)
+
+        self.assertEqual([item["title"] for item in results], ["Top", "Keep"])
 
 
 if __name__ == "__main__":

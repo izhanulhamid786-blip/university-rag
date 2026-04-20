@@ -1,14 +1,13 @@
 """
-crawler.py — Central University of Kashmir  |  Interactive Playwright Crawler v4
+crawler.py - Central University of Kashmir | Interactive Playwright Crawler v4
 CUK uses Angular hash routing + JS click handlers.
-Normal link discovery finds nothing. This crawler INTERACTS with the page:
+Normal link discovery finds nothing. This crawler interacts with the page:
   1. Clicks every navbar item
   2. Clicks every "View All / View More / Read More" button
-  3. Intercepts every network request to capture API-served PDF/doc URLs
+  3. Intercepts network requests to capture API-served document URLs
   4. Scrolls pages to trigger lazy-loaded content
-  5. Falls back to href harvesting for any plain anchor tags"""
-
-
+  5. Falls back to href harvesting for plain anchor tags
+"""
 
 import io
 import re
@@ -27,52 +26,25 @@ import pdfplumber
 from tqdm import tqdm
 from colorama import Fore, Style, init
 
-try:
-    from PIL import Image
-except ImportError:
-    Image = None
-
 init(autoreset=True)
 
-# ── optional imports ──────────────────────────────────────
+# optional imports
 DEFAULT_TESSERACT_PATH = Path(r"C:\Users\hp\AppData\Local\Programs\Tesseract-OCR\tesseract.exe")
 
 try:
     import pytesseract
     from pdf2image import convert_from_bytes
-    PDF2IMAGE_AVAILABLE = bool(shutil.which("pdftoppm") or shutil.which("pdftocairo"))
-except ImportError:
-    PDF2IMAGE_AVAILABLE = False
-
-try:
-    import pytesseract
     _tesseract_cmd = str(DEFAULT_TESSERACT_PATH) if DEFAULT_TESSERACT_PATH.exists() else shutil.which("tesseract")
     if _tesseract_cmd:
         pytesseract.pytesseract.tesseract_cmd = _tesseract_cmd
-        try:
-            import fitz
-            FITZ_AVAILABLE = Image is not None
-        except ImportError:
-            FITZ_AVAILABLE = False
-
-        OCR_AVAILABLE = PDF2IMAGE_AVAILABLE or FITZ_AVAILABLE
-        if OCR_AVAILABLE:
-            backends = []
-            if PDF2IMAGE_AVAILABLE:
-                backends.append("pdf2image")
-            if FITZ_AVAILABLE:
-                backends.append("pymupdf")
-            OCR_STATUS = f"enabled ({_tesseract_cmd}; backend={'+'.join(backends)})"
-        else:
-            OCR_STATUS = "disabled (missing pdf2image and pymupdf backends)"
+        OCR_AVAILABLE = True
+        OCR_STATUS = f"enabled ({_tesseract_cmd})"
     else:
         OCR_AVAILABLE = False
         OCR_STATUS = "disabled (tesseract executable not found)"
 except ImportError:
     OCR_AVAILABLE = False
-    PDF2IMAGE_AVAILABLE = False
-    FITZ_AVAILABLE = False
-    OCR_STATUS = "disabled (missing pytesseract)"
+    OCR_STATUS = "disabled (missing pytesseract/pdf2image)"
 
 try:
     import docx as python_docx
@@ -86,9 +58,8 @@ try:
 except ImportError:
     XLSX_AVAILABLE = False
 
-# ─────────────────────────────────────────────────────────
 # CONFIG
-# ─────────────────────────────────────────────────────────
+
 
 BASE_URL         = "https://cukashmir.ac.in"
 OUTPUT_DIR       = Path("data")
@@ -110,14 +81,14 @@ ALLOWED_DOMAINS  = {
     "cukapi.disgenweb.in",
 }
 
-# ── Navbar items to click (text as shown on the site) ──
+# Navbar items to click (text as shown on the site)
 NAVBAR_ITEMS = [
     "HOME", "ABOUT", "CAMPUSES", "ADMINISTRATION",
     "ACADEMICS", "RESEARCH", "LIBRARY", "DIQA",
     "ADMISSIONS", "JOBS", "CONTACT", "RESULTS",
 ]
 
-# ── Section buttons on homepage and inner pages ──
+# Section buttons on homepage and inner pages
 VIEW_ALL_TEXTS = [
     "view all", "view more", "read more", "see all",
     "more notices", "all notices", "more results",
@@ -130,7 +101,7 @@ VIEW_ALL_TEXTS = [
     "general notices",
 ]
 
-# ── Sub-menu items that appear on hover/click ──
+# Sub-menu items that appear on hover/click
 DROPDOWN_ITEMS = [
     # About
     "vision & mission", "act & statutes", "university profile",
@@ -153,7 +124,7 @@ DROPDOWN_ITEMS = [
     "teaching positions", "non-teaching", "recruitment",
 ]
 
-# ── Block these URL patterns ──
+# Block these URL patterns 
 BLOCK_PATTERNS = [
     r"/wp-admin", r"/login", r"/signin",
     r"\.js(\?|$)", r"\.css(\?|$)", r"\.ico$",
@@ -175,9 +146,7 @@ HIGH_VALUE = [
     "form", "application", "employ", "job",
 ]
 
-# ─────────────────────────────────────────────────────────
-# LOGGING
-# ─────────────────────────────────────────────────────────
+
 
 logging.basicConfig(
     level=logging.INFO,
@@ -189,9 +158,9 @@ logging.basicConfig(
 )
 log = logging.getLogger("cuk")
 
-# ─────────────────────────────────────────────────────────
+
 # HELPERS
-# ─────────────────────────────────────────────────────────
+
 
 def url_hash(url: str) -> str:
     return hashlib.md5(url.encode()).hexdigest()[:12]
@@ -289,9 +258,9 @@ def quality_score(url: str, text: str) -> int:
     c = (url + " " + text[:500]).lower()
     return sum(1 for kw in HIGH_VALUE if kw in c)
 
-# ─────────────────────────────────────────────────────────
+
 # PDF / DOCX / XLSX EXTRACTION
-# ─────────────────────────────────────────────────────────
+
 
 def extract_pdf(content: bytes, url: str) -> dict | None:
     rec = _pdfplumber(content, url)
@@ -334,27 +303,7 @@ def _pdfplumber(content: bytes, url: str) -> dict | None:
 
 def _ocr_pdf(content: bytes, url: str) -> dict | None:
     try:
-        images = []
-        if PDF2IMAGE_AVAILABLE:
-            try:
-                images = convert_from_bytes(content, dpi=200)
-            except Exception as e:
-                log.warning(f"pdf2image OCR backend failed [{url}]: {e}")
-
-        if not images and FITZ_AVAILABLE:
-            doc = fitz.open(stream=content, filetype="pdf")
-            try:
-                for page in doc:
-                    pix = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
-                    images.append(
-                        Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-                    )
-            finally:
-                doc.close()
-
-        if not images:
-            return None
-
+        images = convert_from_bytes(content, dpi=200)
         pages  = []
         for img in images:
             try:    txt = pytesseract.image_to_string(img, lang="eng+hin")
@@ -412,9 +361,9 @@ def extract_xlsx(content: bytes, url: str) -> dict | None:
         log.warning(f"xlsx failed [{url}]: {e}")
         return None
 
-# ─────────────────────────────────────────────────────────
+
 # HTML EXTRACTION  (from rendered Playwright HTML)
-# ─────────────────────────────────────────────────────────
+
 
 def extract_html(html: str, url: str) -> dict:
     soup = BeautifulSoup(html, "lxml")
@@ -511,9 +460,9 @@ def extract_html(html: str, url: str) -> dict:
         "scraped_at":datetime.utcnow().isoformat(),
     }
 
-# ─────────────────────────────────────────────────────────
+
 # INTERACTIVE PAGE HANDLER
-# ─────────────────────────────────────────────────────────
+
 
 class PageHandler:
     """
@@ -712,9 +661,9 @@ class PageHandler:
         self.ctx.close()
         self.browser.close()
 
-# ─────────────────────────────────────────────────────────
+
 # CRAWLER
-# ─────────────────────────────────────────────────────────
+
 
 class CUKCrawler:
 
@@ -722,10 +671,8 @@ class CUKCrawler:
         for d in [OUTPUT_DIR, PDF_DIR, JSON_DIR]:
             d.mkdir(parents=True, exist_ok=True)
 
-        self.known_urls: set[str]       = set()
-        self.seen_this_run: set[str]    = set()
-        self.queued_urls: set[str]      = set()
-        self.queue: list[tuple[int, str]] = []
+        self.visited: set[str]          = set()
+        self.queue:   list[tuple[int,str]] = []
         self.stats = {
             "html":0,
             "pdf":0,
@@ -734,7 +681,6 @@ class CUKCrawler:
             "pdf_fetch_failed":0,
             "docx":0,
             "xlsx":0,
-            "already_downloaded":0,
             "skipped":0,
             "errors":0,
             "chars":0,
@@ -756,61 +702,20 @@ class CUKCrawler:
 
         if self._vfile.exists():
             with open(self._vfile, encoding="utf-8") as f:
-                high_priority_pages = [
-                    "notices", "results", "admission",
-                    "notification", "circular", "exam",
-                ]
-                self.known_urls = {
-                    url for url in f.read().splitlines()
-                    if not any(keyword in url.lower() for keyword in high_priority_pages)
-                }
-            log.info(f"Resumed — {len(self.known_urls)} URLs already known")
+                self.visited = set(f.read().splitlines())
+            log.info(f"Resumed — {len(self.visited)} URLs already visited")
 
-        self.known_binary_urls = {url for url in self.known_urls if is_binary(url)}
-
-    # ── Queue helpers ────────────────────────────────────
+    # 
 
     def _enqueue(self, url: str):
         url = normalise(url)
-        if not url or is_blocked(url) or not is_allowed(url):
-            return
-        if url in self.seen_this_run or url in self.queued_urls:
-            return
-        if is_binary(url) and url in self.known_binary_urls and self._has_downloaded_binary(url):
-            self.stats["already_downloaded"] += 1
-            return
-        self.queue.append((priority_of(url), url))
-        self.queued_urls.add(url)
+        if url and url not in self.visited and not is_blocked(url) and is_allowed(url):
+            self.queue.append((priority_of(url), url))
 
-    def _mark_seen(self, url: str):
-        self.seen_this_run.add(url)
-        if url in self.known_urls:
-            return
-        self.known_urls.add(url)
-        if is_binary(url):
-            self.known_binary_urls.add(url)
+    def _mark_visited(self, url: str):
+        self.visited.add(url)
         with open(self._vfile, "a", encoding="utf-8") as f:
             f.write(url + "\n")
-
-    def _seed_known_html_pages(self):
-        seeded = 0
-        for url in sorted(self.known_urls):
-            if is_binary(url):
-                continue
-            before = len(self.queue)
-            self._enqueue(url)
-            if len(self.queue) > before:
-                seeded += 1
-        if seeded:
-            log.info(f"Seeded {seeded} known HTML pages for incremental discovery")
-
-    def _has_downloaded_binary(self, url: str) -> bool:
-        json_path = JSON_DIR / safe_filename(url, ".json")
-        if json_path.exists():
-            return True
-        if url.lower().split("?")[0].endswith(".pdf"):
-            return (PDF_DIR / safe_filename(url, ".pdf")).exists()
-        return False
 
     def _changed(self, fname: str, content) -> bool:
         raw = content if isinstance(content, bytes) else content.encode()
@@ -827,7 +732,7 @@ class CUKCrawler:
             json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8"
         )
 
-    # ── Process helpers ──────────────────────────────────
+    #  Process helpers
 
     def _save_html_page(self, url: str, handler: PageHandler):
         html = handler.html()
@@ -835,18 +740,12 @@ class CUKCrawler:
             self.stats["errors"] += 1
             return
 
-        record = extract_html(html, url)
-        # Enqueue all links found on this page
-        for link in record["outlinks"]:
-            self._enqueue(link)
-        for link in record.get("document_links", []):
-            self._enqueue(link)
-
-        if len(record["text"]) < 60:
+        if not self._changed(safe_filename(url,".cache"), html):
             self.stats["skipped"] += 1
             return
 
-        if not self._changed(safe_filename(url,".cache"), html):
+        record = extract_html(html, url)
+        if len(record["text"]) < 60:
             self.stats["skipped"] += 1
             return
 
@@ -864,6 +763,12 @@ class CUKCrawler:
             f"{color}[{record['category'].upper()[:12]}]{Style.RESET_ALL} "
             f"Q={record['quality_score']} | {record['title'][:55]}"
         )
+
+        # Enqueue all links found on this page
+        for link in record["outlinks"]:
+            self._enqueue(link)
+        for link in record.get("document_links", []):
+            self._enqueue(link)
 
     def _save_binary(self, url: str, handler: PageHandler):
         ext = url.lower().split("?")[0].rsplit(".",1)[-1]
@@ -925,7 +830,7 @@ class CUKCrawler:
         else:
             self.stats["skipped"] += 1
 
-    # ── Phase 1: Deep interactive discovery ──────────────
+    #  Phase 1: Deep interactive discovery 
 
     def _interactive_discovery(self, handler: PageHandler):
         """
@@ -937,16 +842,15 @@ class CUKCrawler:
         # Load homepage
         handler.goto(BASE_URL + "/#/publiczone")
         handler.scroll_to_bottom()
-        self._mark_seen(BASE_URL + "/#/publiczone")
         self._save_html_page(BASE_URL + "/#/publiczone", handler)
 
         # Click each navbar item
         for item in NAVBAR_ITEMS:
             try:
                 url = handler.click_navbar_item(item)
-                if url and url not in self.seen_this_run:
+                if url and url not in self.visited:
                     log.info(f"  [NAV] {item} → {url}")
-                    self._mark_seen(url)
+                    self._mark_visited(url)
                     handler.scroll_to_bottom()
                     self._save_html_page(url, handler)
 
@@ -999,7 +903,7 @@ class CUKCrawler:
 
         log.info(f"--- Discovery complete. Queue size: {len(self.queue)} ---\n")
 
-    # ── Main run ──────────────────────────────────────────
+    #Main run 
 
     def run(self):
         from playwright.sync_api import sync_playwright
@@ -1017,20 +921,18 @@ class CUKCrawler:
         with sync_playwright() as pw:
             handler = PageHandler(pw)
             try:
-                # ── Phase 1: Click through every nav / dropdown / button ──
+                #  Phase 1: Click through every nav / dropdown / button 
                 self._interactive_discovery(handler)
-                self._seed_known_html_pages()
 
                 # ── Phase 2: Work through the discovered queue ──
                 log.info("--- Phase 2: Processing discovered queue ---")
                 while self.queue and crawled < MAX_PAGES:
                     self.queue.sort(key=lambda x: x[0])
                     _, url = self.queue.pop(0)
-                    self.queued_urls.discard(url)
 
-                    if url in self.seen_this_run:
+                    if url in self.visited:
                         continue
-                    self._mark_seen(url)
+                    self._mark_visited(url)
 
                     if is_binary(url):
                         self._save_binary(url, handler)
@@ -1081,7 +983,6 @@ class CUKCrawler:
         print(f"  PDF fetch   : {self.stats['pdf_fetch_failed']} failed")
         print(f"  DOCX        : {self.stats['docx']}")
         print(f"  XLSX        : {self.stats['xlsx']}")
-        print(f"  Existing    : {self.stats['already_downloaded']} already downloaded")
         print(f"  Skipped     : {self.stats['skipped']}")
         print(f"  Errors      : {self.stats['errors']}")
         print(f"  Total chars : {self.stats['chars']:,}")
@@ -1109,9 +1010,9 @@ class CUKCrawler:
         idx.write_text(json.dumps(index, indent=2), encoding="utf-8")
         log.info(f"Index saved → {idx} ({len(index)} docs)")
 
-# ─────────────────────────────────────────────────────────
+
 # SCHEDULER  (python crawler.py --schedule)
-# ─────────────────────────────────────────────────────────
+
 
 def start_scheduler():
     try:
@@ -1127,9 +1028,9 @@ def start_scheduler():
     log.info("Scheduler running — re-crawls every Sunday 02:00. Ctrl+C to stop.")
     s.start()
 
-# ─────────────────────────────────────────────────────────
+
 # ENTRY POINT
-# ─────────────────────────────────────────────────────────
+
 
 if __name__ == "__main__":
     import argparse

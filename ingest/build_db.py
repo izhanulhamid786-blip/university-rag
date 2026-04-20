@@ -1,6 +1,7 @@
 import argparse
 import json
 import sys
+from collections import Counter
 from pathlib import Path
 
 import chromadb
@@ -50,6 +51,8 @@ def build(reset: bool = False) -> int:
         return 1
 
     print(f"  {len(documents)} docs -> {len(chunks)} chunks")
+    print(f"  Source kinds: {dict(sorted(Counter(doc['source_kind'] for doc in documents).items()))}")
+    print(f"  File types: {dict(sorted(Counter(doc['file_type'] for doc in documents).items()))}")
     print("Embedding...")
     try:
         model = SentenceTransformer(

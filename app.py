@@ -1,418 +1,749 @@
+import html
+import re
 import sys
 import threading
+from collections import Counter
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent))
 
 import streamlit as st
-from rag.pipeline import run, warmup_local_models
+
+sys.path.insert(0, str(Path(__file__).parent))
+
+from rag.pipeline import app_status, run_with_metadata, warmup_local_models
+
+
+QUICK_PROMPTS = [
+    "What is the admission process for 2026?",
+    "Which courses are available at CUK?",
+    "When is the CUET exam and where do I check notices?",
+    "How do I apply for a PhD at CUK?",
+    "Show me faculty or department contact details.",
+    "What official documents do I need for admission?",
+]
+
+FOLLOW_UP_LIBRARY = {
+    "admissions": [
+        "What documents are required for admission?",
+        "What is the eligibility criteria?",
+        "Where can I find the official admission notice?",
+    ],
+    "departments": [
+        "Which department should I contact for this?",
+        "Show me the relevant faculty or office details.",
+        "What programmes are offered in this department?",
+    ],
+    "contact": [
+        "Do you have the official email or phone number?",
+        "Which office handles this process?",
+        "Can you point me to the official contact page?",
+    ],
+    "examinations": [
+        "Where can I check the latest exam notice?",
+        "What dates are confirmed in the official notice?",
+        "Is there an official page for exam updates?",
+    ],
+    "general": [
+        "Can you summarize the most important points?",
+        "Show me the official sources for this answer.",
+        "What should I ask next to confirm the details?",
+    ],
+}
+
+STYLE_MAP = {
+    "Balanced": "balanced",
+    "Detailed": "detailed",
+    "Concise": "concise",
+}
+NO_INFO_MESSAGE = "I don't have that information. Please contact the university office directly."
+CITATION_BLOCK_RE = re.compile(r"\s*(\[(?:\d+(?:,\s*\d+)*)\])\.?\s*$")
 
 
 def _start_background_warmup() -> bool:
     threading.Thread(target=warmup_local_models, daemon=True).start()
     return True
 
+
+def _init_state() -> None:
+    if "history" not in st.session_state:
+        st.session_state.history = []
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+    if "answer_style" not in st.session_state:
+        st.session_state.answer_style = "Balanced"
+    if "source_limit" not in st.session_state:
+        st.session_state.source_limit = 4
+    if "show_debug" not in st.session_state:
+        st.session_state.show_debug = False
+
+
+def _reset_chat() -> None:
+    st.session_state.history = []
+    st.session_state.messages = []
+    st.session_state.pop("pending_question", None)
+
+
+def _queue_question(question: str) -> None:
+    st.session_state.pending_question = question
+    st.rerun()
+
+
+def _top_category(sources: list[dict]) -> str:
+    categories = [str(source.get("category", "general")).lower() for source in sources if source.get("category")]
+    if not categories:
+        return "general"
+    return Counter(categories).most_common(1)[0][0]
+
+
+def _build_follow_ups(query: str, sources: list[dict]) -> list[str]:
+    lower_query = (query or "").lower()
+    category = _top_category(sources)
+
+    if any(word in lower_query for word in ("admission", "apply", "eligibility", "cuet")):
+        category = "admissions"
+    elif any(word in lower_query for word in ("faculty", "teacher", "professor", "contact", "email", "phone")):
+        category = "contact"
+    elif any(word in lower_query for word in ("exam", "examination", "datesheet", "result")):
+        category = "examinations"
+    elif any(word in lower_query for word in ("department", "programme", "course", "school")):
+        category = "departments"
+
+    suggestions = FOLLOW_UP_LIBRARY.get(category, FOLLOW_UP_LIBRARY["general"]) + FOLLOW_UP_LIBRARY["general"]
+    deduped = []
+    seen = set()
+    for item in suggestions:
+        key = item.strip().lower()
+        if not key or key == lower_query or key in seen:
+            continue
+        seen.add(key)
+        deduped.append(item)
+        if len(deduped) == 3:
+            break
+    return deduped
+
+
+def _confidence_label(sources: list[dict], details: dict) -> str:
+    selected = int(details.get("selected_chunk_count") or 0)
+    top_score = None
+    if sources:
+        top_score = sources[0].get("rerank_score")
+
+    if selected >= 3 and isinstance(top_score, (int, float)) and top_score >= 1.5:
+        return "Strong grounding"
+    if selected >= 2 and sources:
+        return "Good grounding"
+    if sources:
+        return "Limited grounding"
+    return "Low grounding"
+
+
+def _format_collection_state(status: dict) -> str:
+    if status["knowledge_base_ready"]:
+        return f"Collection `{status['collection_name']}` is ready."
+    return status["message"] or "Knowledge base is not ready yet."
+
+
+def _normalize_answer(text: str) -> str:
+    return " ".join((text or "").split()).strip().lower()
+
+
+def _is_no_info_answer(text: str) -> bool:
+    normalized = _normalize_answer(text)
+    target = _normalize_answer(NO_INFO_MESSAGE)
+    return normalized == target or normalized.startswith(target + " ")
+
+
+def _strip_trailing_citation(line: str) -> tuple[str, str | None]:
+    match = CITATION_BLOCK_RE.search(line)
+    if not match:
+        return line, None
+    cleaned = line[: match.start()].rstrip()
+    if cleaned.endswith(" ."):
+        cleaned = cleaned[:-2] + "."
+    return cleaned, match.group(1)
+
+
+def _tidy_answer_citations(text: str) -> str:
+    lines = text.splitlines()
+    tidied = []
+    pending_group: list[tuple[str, str]] = []
+
+    def flush_group() -> None:
+        nonlocal pending_group
+        if not pending_group:
+            return
+
+        citations = [citation for _, citation in pending_group]
+        same_citation = len(set(citations)) == 1 and len(pending_group) >= 2
+        if same_citation:
+            for cleaned, _ in pending_group:
+                tidied.append(cleaned)
+            tidied.append(f"Sources: {citations[0]}")
+        else:
+            for cleaned, citation in pending_group:
+                tidied.append(f"{cleaned} {citation}" if citation else cleaned)
+        pending_group = []
+
+    for line in lines:
+        if re.match(r"^\s*[-*]\s+", line):
+            cleaned, citation = _strip_trailing_citation(line)
+            if citation:
+                pending_group.append((cleaned, citation))
+                continue
+        flush_group()
+        tidied.append(line)
+
+    flush_group()
+    return "\n".join(tidied)
+
+
+def _inject_styles() -> None:
+    st.markdown(
+        """
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:wght@500;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
+:root {
+    --bg: #f6efe7;
+    --bg-soft: #fffaf4;
+    --surface: rgba(255, 251, 245, 0.9);
+    --surface-strong: #fffdf9;
+    --border: rgba(113, 88, 63, 0.16);
+    --border-strong: rgba(113, 88, 63, 0.28);
+    --ink: #1f2d3d;
+    --muted: #5e6f7f;
+    --accent: #d46f4d;
+    --accent-soft: #f6d4c7;
+    --blue: #2f6ea5;
+    --blue-soft: #d9e8f5;
+    --gold: #c48a3a;
+    --shadow: 0 18px 45px rgba(58, 43, 26, 0.08);
+}
+
+html, body, [data-testid="stAppViewContainer"], [data-testid="stApp"] {
+    background:
+        radial-gradient(circle at top left, rgba(212, 111, 77, 0.13), transparent 30%),
+        radial-gradient(circle at top right, rgba(47, 110, 165, 0.14), transparent 28%),
+        linear-gradient(180deg, #fbf4ec 0%, #f6efe7 38%, #f9f3ea 100%);
+    color: var(--ink);
+    font-family: 'Space Grotesk', sans-serif;
+}
+
+[data-testid="stAppViewContainer"]::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background-image:
+        linear-gradient(rgba(255,255,255,0.16) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.16) 1px, transparent 1px);
+    background-size: 64px 64px;
+    opacity: 0.35;
+    pointer-events: none;
+}
+
+.block-container {
+    max-width: 1180px !important;
+    padding-top: 2rem !important;
+    padding-bottom: 5rem !important;
+}
+
+[data-testid="stSidebar"] {
+    background: rgba(255, 248, 240, 0.88);
+    border-right: 1px solid var(--border);
+}
+
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p,
+[data-testid="stSidebar"] label,
+[data-testid="stSidebar"] .stSelectbox label,
+[data-testid="stSidebar"] .stSlider label {
+    color: var(--ink) !important;
+}
+
+.hero-card {
+    position: relative;
+    overflow: hidden;
+    padding: 2rem 2.1rem;
+    border-radius: 28px;
+    background:
+        linear-gradient(135deg, rgba(255,255,255,0.86), rgba(255,246,235,0.92)),
+        linear-gradient(135deg, rgba(47,110,165,0.08), rgba(212,111,77,0.06));
+    border: 1px solid rgba(113, 88, 63, 0.18);
+    box-shadow: var(--shadow);
+    margin-bottom: 1.25rem;
+}
+
+.hero-card::after {
+    content: "";
+    position: absolute;
+    width: 240px;
+    height: 240px;
+    top: -90px;
+    right: -70px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(47, 110, 165, 0.16), transparent 68%);
+}
+
+.eyebrow {
+    display: inline-flex;
+    gap: 0.5rem;
+    align-items: center;
+    padding: 0.35rem 0.7rem;
+    background: rgba(47, 110, 165, 0.09);
+    color: var(--blue);
+    border: 1px solid rgba(47, 110, 165, 0.15);
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.hero-title {
+    margin: 0.9rem 0 0.55rem;
+    font-family: 'Fraunces', serif;
+    font-size: clamp(2.2rem, 4vw, 3.55rem);
+    line-height: 1.02;
+    color: #172534;
+}
+
+.hero-copy {
+    max-width: 760px;
+    margin: 0;
+    color: var(--muted);
+    font-size: 1rem;
+    line-height: 1.7;
+}
+
+.hero-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    margin-top: 1.2rem;
+}
+
+.hero-pill {
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: rgba(255,255,255,0.75);
+    color: var(--ink);
+    padding: 0.45rem 0.8rem;
+    font-size: 0.84rem;
+}
+
+.section-title {
+    margin: 1.4rem 0 0.8rem;
+    color: #25384b;
+    font-size: 0.9rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.stat-card {
+    padding: 1rem 1rem 0.9rem;
+    border-radius: 22px;
+    border: 1px solid rgba(113, 88, 63, 0.14);
+    background: rgba(255,255,255,0.7);
+    box-shadow: 0 12px 28px rgba(58, 43, 26, 0.05);
+}
+
+.stat-label {
+    color: var(--muted);
+    font-size: 0.76rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.stat-value {
+    margin-top: 0.35rem;
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: #1a2938;
+}
+
+.stat-sub {
+    margin-top: 0.25rem;
+    color: var(--muted);
+    font-size: 0.84rem;
+}
+
+.sidebar-card {
+    padding: 1rem 1rem 0.7rem;
+    border: 1px solid var(--border);
+    border-radius: 22px;
+    background: rgba(255, 253, 249, 0.86);
+    box-shadow: 0 14px 34px rgba(58, 43, 26, 0.06);
+    margin-bottom: 1rem;
+}
+
+.sidebar-kicker {
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 0.76rem;
+    font-weight: 700;
+}
+
+.sidebar-title {
+    margin: 0.3rem 0 0.4rem;
+    color: var(--ink);
+    font-size: 1.15rem;
+    font-weight: 700;
+}
+
+.sidebar-copy {
+    color: var(--muted);
+    font-size: 0.92rem;
+    line-height: 1.55;
+}
+
+.source-card {
+    border: 1px solid var(--border);
+    background: rgba(255,255,255,0.86);
+    border-radius: 18px;
+    padding: 0.95rem 1rem;
+    margin-bottom: 0.85rem;
+    box-shadow: 0 10px 22px rgba(58, 43, 26, 0.05);
+}
+
+.source-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+    margin-bottom: 0.4rem;
+}
+
+.source-citation,
+.source-category,
+.source-match {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    padding: 0.24rem 0.65rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.source-citation {
+    background: rgba(212, 111, 77, 0.12);
+    color: var(--accent);
+}
+
+.source-category {
+    background: rgba(47, 110, 165, 0.12);
+    color: var(--blue);
+}
+
+.source-match {
+    background: rgba(196, 138, 58, 0.12);
+    color: #8d6221;
+}
+
+.source-title {
+    color: #1a2938;
+    font-weight: 700;
+    margin-bottom: 0.35rem;
+}
+
+.source-preview {
+    color: var(--muted);
+    line-height: 1.6;
+    font-size: 0.92rem;
+}
+
+.source-link {
+    display: inline-flex;
+    margin-top: 0.75rem;
+    color: var(--blue);
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.source-path {
+    margin-top: 0.75rem;
+    color: var(--muted);
+    font-size: 0.8rem;
+    word-break: break-all;
+}
+
+.followup-label {
+    margin-top: 0.8rem;
+    margin-bottom: 0.35rem;
+    color: var(--muted);
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 700;
+}
+
+.stButton > button,
+[data-testid="stBaseButton-secondary"] {
+    border-radius: 16px !important;
+    border: 1px solid rgba(113, 88, 63, 0.16) !important;
+    background: rgba(255, 251, 245, 0.88) !important;
+    color: var(--ink) !important;
+    min-height: 3rem !important;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease !important;
+    box-shadow: 0 10px 24px rgba(58, 43, 26, 0.05) !important;
+}
+
+.stButton > button:hover,
+[data-testid="stBaseButton-secondary"]:hover {
+    transform: translateY(-1px);
+    border-color: rgba(47, 110, 165, 0.24) !important;
+    box-shadow: 0 14px 28px rgba(58, 43, 26, 0.08) !important;
+}
+
+[data-testid="stChatMessage"] {
+    background: transparent !important;
+    border: none !important;
+    padding: 0.3rem 0 !important;
+}
+
+[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) .stChatMessageContent {
+    background: linear-gradient(135deg, rgba(47,110,165,0.12), rgba(47,110,165,0.06));
+    border: 1px solid rgba(47, 110, 165, 0.16);
+    border-radius: 22px 22px 8px 22px;
+    padding: 1rem 1.1rem;
+}
+
+[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"]) .stChatMessageContent {
+    background: rgba(255, 253, 250, 0.9);
+    border: 1px solid rgba(113, 88, 63, 0.12);
+    border-radius: 10px 22px 22px 22px;
+    padding: 1rem 1.1rem;
+    box-shadow: 0 12px 30px rgba(58, 43, 26, 0.05);
+}
+
+[data-testid="stChatInput"] {
+    background: linear-gradient(180deg, rgba(246,239,231,0), rgba(246,239,231,0.92) 30%, rgba(246,239,231,1) 100%);
+    padding-top: 1rem;
+}
+
+[data-testid="stChatInputTextArea"] {
+    border-radius: 18px !important;
+    border: 1px solid rgba(113, 88, 63, 0.18) !important;
+    background: rgba(255, 251, 245, 0.9) !important;
+    box-shadow: 0 14px 28px rgba(58, 43, 26, 0.05) !important;
+}
+
+[data-testid="stMarkdownContainer"] p,
+[data-testid="stMarkdownContainer"] li {
+    color: var(--ink);
+    line-height: 1.7;
+}
+
+[data-testid="stMarkdownContainer"] a {
+    color: var(--blue);
+}
+
+.stExpander {
+    border-radius: 18px !important;
+    border: 1px solid rgba(113, 88, 63, 0.12) !important;
+    background: rgba(255, 251, 245, 0.74) !important;
+}
+
+footer, #MainMenu, header {
+    display: none !important;
+}
+</style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _render_sidebar(status: dict) -> None:
+    with st.sidebar:
+        st.markdown(
+            """
+<div class="sidebar-card">
+    <div class="sidebar-kicker">Control Room</div>
+    <div class="sidebar-title">Make the assistant feel sharper</div>
+    <div class="sidebar-copy">
+        Tune answer depth, evidence density, and diagnostics without changing the retrieval backbone.
+    </div>
+</div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        st.selectbox(
+            "Answer style",
+            options=["Balanced", "Detailed", "Concise"],
+            key="answer_style",
+            help="Balanced keeps answers clear, Detailed expands grounded context, and Concise stays short.",
+        )
+        st.slider(
+            "Evidence cards",
+            min_value=2,
+            max_value=8,
+            key="source_limit",
+            help="Controls how many source cards are expanded under each answer.",
+        )
+        st.toggle(
+            "Show retrieval diagnostics",
+            key="show_debug",
+            help="Shows rewritten query, retrieval counts, and pipeline timings for each answer.",
+        )
+        if st.button("Clear conversation", use_container_width=True):
+            _reset_chat()
+            st.rerun()
+
+
+def _render_source_cards(sources: list[dict], limit: int) -> None:
+    for source in sources[:limit]:
+        citation = source.get("citation", "?")
+        title = html.escape(str(source.get("label") or "Untitled"))
+        category = html.escape(str(source.get("category") or "general").title())
+        preview = html.escape(str(source.get("preview") or "No preview available."))
+        matched_by = source.get("matched_by") or []
+        matched_text = " + ".join(part.upper() for part in matched_by) if matched_by else "Grounded match"
+        url = source.get("url")
+        path = source.get("path")
+
+        st.markdown(
+            f"""
+<div class="source-card">
+    <div class="source-meta">
+        <span class="source-citation">[{citation}]</span>
+        <span class="source-category">{category}</span>
+        <span class="source-match">{html.escape(matched_text)}</span>
+    </div>
+    <div class="source-title">{title}</div>
+    <div class="source-preview">{preview}</div>
+    {
+        f'<a class="source-link" href="{html.escape(str(url), quote=True)}" target="_blank">Open official source</a>'
+        if url
+        else f'<div class="source-path">{html.escape(str(path or "Local source only"))}</div>'
+    }
+</div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+
+def _render_answer_notes(details: dict, sources: list[dict]) -> None:
+    answer_state = details.get("answer_state", "answered")
+    confidence = _confidence_label(sources, details)
+    rewritten_query = details.get("rewritten_query") or details.get("query") or ""
+    original_query = details.get("query") or ""
+
+    if answer_state == "abstained":
+        st.markdown("**Support status:** No grounded answer found.")
+        if details.get("suppressed_source_count"):
+            st.caption(
+                "Some related documents were retrieved, but they were too weak or off-target to present as evidence."
+            )
+    else:
+        st.markdown(f"**Grounding strength:** {confidence}")
+
+    if rewritten_query and rewritten_query != original_query:
+        st.markdown(f"**Interpreted question:** `{rewritten_query}`")
+
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Candidates", int(details.get("candidate_count") or 0))
+    col2.metric("Reranked", int(details.get("rerank_input_count") or 0))
+    col3.metric("Used in answer", int(details.get("selected_chunk_count") or 0))
+
+    if st.session_state.show_debug:
+        timings = details.get("timings_ms") or {}
+        t1, t2, t3, t4 = st.columns(4)
+        t1.metric("Rewrite", f"{timings.get('rewrite', 0):.1f} ms")
+        t2.metric("Retrieve", f"{timings.get('retrieve', 0):.1f} ms")
+        t3.metric("Rerank", f"{timings.get('rerank', 0):.1f} ms")
+        t4.metric("Total", f"{timings.get('total', 0):.1f} ms")
+
+        if sources:
+            category_mix = ", ".join(
+                f"{name}: {count}"
+                for name, count in Counter(
+                    str(source.get("category") or "general").title() for source in sources
+                ).items()
+            )
+            st.caption(f"Source mix: {category_mix}")
+
+
+def _render_assistant_panels(message: dict, message_index: int) -> None:
+    sources = message.get("sources") or []
+    details = message.get("details") or {}
+    follow_ups = message.get("follow_ups") or []
+    answer_state = details.get("answer_state", "answered")
+
+    if sources:
+        with st.expander(f"Evidence ({min(len(sources), st.session_state.source_limit)} shown)", expanded=False):
+            _render_source_cards(sources, st.session_state.source_limit)
+
+    show_notes = bool(sources) or st.session_state.show_debug
+    if answer_state == "abstained" and not st.session_state.show_debug:
+        show_notes = False
+
+    if show_notes:
+        with st.expander("Answer notes", expanded=False):
+            _render_answer_notes(details, sources)
+
+    if follow_ups and answer_state != "abstained":
+        st.markdown('<div class="followup-label">Continue with</div>', unsafe_allow_html=True)
+        columns = st.columns(len(follow_ups))
+        for index, follow_up in enumerate(follow_ups):
+            if columns[index].button(
+                follow_up,
+                key=f"follow_up_{message_index}_{index}",
+                use_container_width=True,
+            ):
+                _queue_question(follow_up)
+
+
 st.set_page_config(
     page_title="CUK AI Assistant",
-    page_icon="🎓",
-    layout="centered"
+    page_icon=":mortar_board:",
+    layout="wide",
 )
+
+_init_state()
+_inject_styles()
 
 if not st.session_state.get("_warmup_started"):
     _start_background_warmup()
     st.session_state._warmup_started = True
 
-st.markdown("""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=DM+Sans:wght@300;400;500&display=swap');
+status = app_status()
+_render_sidebar(status)
 
-/* ── Root & Reset ── */
-:root {
-    --midnight: #050d1a;
-    --deep:     #091628;
-    --navy:     #0d2240;
-    --glass:    rgba(13, 34, 64, 0.55);
-    --glass2:   rgba(255,255,255,0.04);
-    --gold:     #c9a84c;
-    --gold-lt:  #f0d080;
-    --sky:      #4a9ede;
-    --sky-lt:   #7ec8ff;
-    --text:     #e8f0fa;
-    --muted:    #7a9bc4;
-    --border:   rgba(100,160,255,0.15);
-    --border2:  rgba(201,168,76,0.3);
-}
-
-html, body, [data-testid="stAppViewContainer"], [data-testid="stApp"] {
-    background: var(--midnight) !important;
-    font-family: 'DM Sans', sans-serif;
-    color: var(--text);
-}
-
-/* ── Starfield background ── */
-[data-testid="stAppViewContainer"]::before {
-    content: '';
-    position: fixed;
-    inset: 0;
-    background:
-        radial-gradient(ellipse 80% 50% at 20% 0%,  rgba(74,158,222,0.12) 0%, transparent 60%),
-        radial-gradient(ellipse 60% 40% at 80% 100%, rgba(201,168,76,0.09) 0%, transparent 55%),
-        radial-gradient(ellipse 40% 60% at 50% 50%,  rgba(9,22,40,0.8) 0%, transparent 100%);
-    pointer-events: none;
-    z-index: 0;
-}
-
-/* Subtle mountain silhouette */
-[data-testid="stAppViewContainer"]::after {
-    content: '';
-    position: fixed;
-    bottom: 0; left: 0; right: 0;
-    height: 220px;
-    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 220'%3E%3Cpath fill='%230d1e35' fill-opacity='0.7' d='M0,180 L120,100 L240,150 L360,60 L480,120 L600,40 L720,110 L840,50 L960,130 L1080,70 L1200,140 L1320,80 L1440,160 L1440,220 L0,220 Z'/%3E%3Cpath fill='%230a1728' fill-opacity='0.9' d='M0,200 L180,140 L300,170 L420,100 L540,155 L660,80 L780,145 L900,90 L1020,160 L1140,110 L1260,170 L1440,120 L1440,220 L0,220 Z'/%3E%3C/svg%3E") bottom/cover no-repeat;
-    pointer-events: none;
-    z-index: 0;
-}
-
-/* Floating particles */
-@keyframes float-up {
-    0%   { transform: translateY(0) translateX(0) scale(1); opacity: 0; }
-    10%  { opacity: 1; }
-    90%  { opacity: 0.3; }
-    100% { transform: translateY(-100vh) translateX(30px) scale(0.3); opacity: 0; }
-}
-.particle {
-    position: fixed;
-    border-radius: 50%;
-    background: var(--gold);
-    animation: float-up linear infinite;
-    pointer-events: none;
-    z-index: 1;
-}
-
-/* ── Scrollbar ── */
-::-webkit-scrollbar { width: 4px; }
-::-webkit-scrollbar-track { background: var(--deep); }
-::-webkit-scrollbar-thumb { background: var(--gold); border-radius: 2px; }
-
-/* ── Main block container ── */
-.block-container {
-    position: relative;
-    z-index: 10;
-    max-width: 820px !important;
-    padding: 1.5rem 1.5rem 5rem !important;
-}
-
-/* ── Header card ── */
-.hero-card {
-    background: linear-gradient(135deg, rgba(13,34,64,0.9) 0%, rgba(5,13,26,0.95) 100%);
-    border: 1px solid var(--border2);
-    border-radius: 20px;
-    padding: 2.2rem 2rem 1.8rem;
-    text-align: center;
-    margin-bottom: 1.6rem;
-    position: relative;
-    overflow: hidden;
-    box-shadow:
-        0 0 0 1px rgba(201,168,76,0.08),
-        0 20px 60px rgba(0,0,0,0.5),
-        0 4px 20px rgba(74,158,222,0.1),
-        inset 0 1px 0 rgba(255,255,255,0.05);
-    transform: perspective(1000px) rotateX(1deg);
-    transform-origin: center top;
-}
-.hero-card::before {
-    content: '';
-    position: absolute;
-    top: 0; left: 50%; transform: translateX(-50%);
-    width: 60%; height: 2px;
-    background: linear-gradient(90deg, transparent, var(--gold), transparent);
-}
-.hero-card::after {
-    content: '';
-    position: absolute;
-    top: -60px; right: -60px;
-    width: 200px; height: 200px;
-    border-radius: 50%;
-    background: radial-gradient(circle, rgba(201,168,76,0.06) 0%, transparent 70%);
-}
-.hero-title {
-    font-family: 'Playfair Display', serif;
-    font-size: 2rem;
-    font-weight: 700;
-    background: linear-gradient(135deg, var(--gold-lt) 0%, var(--gold) 50%, #a07830 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    margin: 0.4rem 0 0.5rem;
-    letter-spacing: 0.01em;
-    line-height: 1.2;
-}
-.hero-sub {
-    font-size: 0.82rem;
-    color: var(--muted);
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    margin-bottom: 1rem;
-}
-.hero-badge-row {
-    display: flex;
-    justify-content: center;
-    gap: 8px;
-    flex-wrap: wrap;
-}
-.hero-badge {
-    background: rgba(74,158,222,0.1);
-    border: 1px solid rgba(74,158,222,0.2);
-    border-radius: 20px;
-    padding: 3px 12px;
-    font-size: 0.72rem;
-    color: var(--sky-lt);
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-}
-
-/* ── Suggested question buttons ── */
-.stButton > button {
-    background: var(--glass) !important;
-    border: 1px solid var(--border) !important;
-    border-radius: 12px !important;
-    color: var(--text) !important;
-    font-size: 0.82rem !important;
-    font-family: 'DM Sans', sans-serif !important;
-    padding: 0.55rem 0.9rem !important;
-    transition: all 0.25s ease !important;
-    text-align: left !important;
-    backdrop-filter: blur(8px) !important;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.04) !important;
-    transform: perspective(600px) translateZ(0) !important;
-    width: 100% !important;
-}
-.stButton > button:hover {
-    background: rgba(74,158,222,0.12) !important;
-    border-color: rgba(74,158,222,0.35) !important;
-    color: var(--sky-lt) !important;
-    transform: perspective(600px) translateZ(6px) translateY(-2px) !important;
-    box-shadow: 0 8px 28px rgba(74,158,222,0.15), inset 0 1px 0 rgba(255,255,255,0.06) !important;
-}
-.stButton > button:active {
-    transform: perspective(600px) translateZ(2px) translateY(0) !important;
-}
-
-/* ── Section label ── */
-.section-label {
-    font-size: 0.7rem;
-    letter-spacing: 0.15em;
-    text-transform: uppercase;
-    color: var(--muted);
-    margin-bottom: 0.7rem;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-.section-label::after {
-    content: '';
-    flex: 1;
-    height: 1px;
-    background: var(--border);
-}
-
-/* ── Chat messages ── */
-[data-testid="stChatMessage"] {
-    background: transparent !important;
-    border: none !important;
-    padding: 0.2rem 0 !important;
-}
-
-/* User bubble */
-[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) .stChatMessageContent,
-[data-testid="stChatMessage"][data-role="user"] .stMarkdown {
-    background: linear-gradient(135deg, rgba(74,158,222,0.18), rgba(74,158,222,0.08)) !important;
-    border: 1px solid rgba(74,158,222,0.25) !important;
-    border-radius: 16px 16px 4px 16px !important;
-    padding: 0.85rem 1.1rem !important;
-    box-shadow: 0 4px 20px rgba(74,158,222,0.1), inset 0 1px 0 rgba(255,255,255,0.05) !important;
-    transform: perspective(800px) rotateY(-0.5deg) !important;
-}
-
-/* Assistant bubble */
-[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"]) .stChatMessageContent,
-[data-testid="stChatMessage"][data-role="assistant"] .stMarkdown {
-    background: linear-gradient(135deg, rgba(13,34,64,0.85), rgba(9,22,40,0.9)) !important;
-    border: 1px solid var(--border) !important;
-    border-left: 2px solid var(--gold) !important;
-    border-radius: 4px 16px 16px 16px !important;
-    padding: 0.9rem 1.1rem !important;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.03) !important;
-    transform: perspective(800px) rotateY(0.5deg) !important;
-}
-
-/* Avatar orbs */
-[data-testid="stChatMessageAvatarUser"] {
-    background: linear-gradient(135deg, #1e6db5, #4a9ede) !important;
-    border: 1px solid rgba(74,158,222,0.4) !important;
-    box-shadow: 0 0 12px rgba(74,158,222,0.3) !important;
-    border-radius: 50% !important;
-}
-[data-testid="stChatMessageAvatarAssistant"] {
-    background: linear-gradient(135deg, #7a5a20, var(--gold)) !important;
-    border: 1px solid rgba(201,168,76,0.4) !important;
-    box-shadow: 0 0 12px rgba(201,168,76,0.3) !important;
-    border-radius: 50% !important;
-}
-
-/* Source badges */
-.src-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    background: rgba(201,168,76,0.08);
-    border: 1px solid rgba(201,168,76,0.25);
-    border-radius: 8px;
-    padding: 3px 10px;
-    font-size: 0.72rem;
-    color: #d4b050;
-    margin: 3px 3px 3px 0;
-    font-family: 'DM Sans', sans-serif;
-    letter-spacing: 0.03em;
-    transition: all 0.2s;
-}
-.src-badge:hover {
-    background: rgba(201,168,76,0.15);
-    border-color: rgba(201,168,76,0.45);
-    transform: translateY(-1px);
-}
-.src-label {
-    font-size: 0.7rem;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: var(--muted);
-    margin: 8px 0 4px;
-}
-
-/* ── Chat input ── */
-[data-testid="stChatInput"] {
-    position: fixed !important;
-    bottom: 0 !important;
-    left: 50% !important;
-    transform: translateX(-50%) !important;
-    width: min(820px, 100%) !important;
-    padding: 1rem 1.5rem !important;
-    background: linear-gradient(to top, var(--midnight) 60%, transparent) !important;
-    z-index: 100 !important;
-    backdrop-filter: blur(12px) !important;
-}
-[data-testid="stChatInputTextArea"] {
-    background: rgba(13,34,64,0.8) !important;
-    border: 1px solid var(--border) !important;
-    border-radius: 14px !important;
-    color: var(--text) !important;
-    font-family: 'DM Sans', sans-serif !important;
-    font-size: 0.9rem !important;
-    box-shadow: 0 0 0 0 transparent, 0 8px 32px rgba(0,0,0,0.3) !important;
-    transition: border-color 0.2s, box-shadow 0.2s !important;
-}
-[data-testid="stChatInputTextArea"]:focus {
-    border-color: rgba(201,168,76,0.5) !important;
-    box-shadow: 0 0 0 3px rgba(201,168,76,0.08), 0 8px 32px rgba(0,0,0,0.3) !important;
-}
-
-/* ── Spinner ── */
-.stSpinner > div {
-    border-top-color: var(--gold) !important;
-}
-.stSpinner p { color: var(--muted) !important; font-size: 0.8rem !important; }
-
-/* ── Divider ── */
-hr { border-color: var(--border) !important; margin: 1rem 0 !important; }
-
-/* ── Animations ── */
-@keyframes fade-in-up {
-    from { opacity: 0; transform: translateY(16px); }
-    to   { opacity: 1; transform: translateY(0); }
-}
-[data-testid="stChatMessage"] {
-    animation: fade-in-up 0.35s ease both;
-}
-
-/* ── Streamlit default overrides ── */
-[data-testid="stMarkdownContainer"] p { color: var(--text); line-height: 1.65; }
-[data-testid="stMarkdownContainer"] strong { color: var(--gold-lt); }
-[data-testid="stMarkdownContainer"] a { color: var(--sky-lt); }
-footer, #MainMenu, header { display: none !important; }
-</style>
-
-<!-- Floating particles -->
-<script>
-(function(){
-    const colors = ['#c9a84c','#4a9ede','#f0d080'];
-    for(let i = 0; i < 18; i++){
-        const p = document.createElement('div');
-        p.className = 'particle';
-        const s = Math.random()*3 + 1;
-        p.style.cssText = `
-            width:${s}px; height:${s}px;
-            left:${Math.random()*100}%;
-            bottom:${Math.random()*20}%;
-            background:${colors[Math.floor(Math.random()*3)]};
-            opacity:${Math.random()*0.5+0.1};
-            animation-duration:${Math.random()*20+15}s;
-            animation-delay:${Math.random()*10}s;
-        `;
-        document.body.appendChild(p);
-    }
-})();
-</script>
-""", unsafe_allow_html=True)
-
-# ── Header ──────────────────────────────────────────────────────────────────
-st.markdown("""
+st.markdown(
+    """
 <div class="hero-card">
-    <div style="font-size:2.4rem;margin-bottom:0.2rem">🎓</div>
-    <div class="hero-title">Central University of Kashmir</div>
-    <div class="hero-sub">AI Campus Intelligence</div>
-    <div class="hero-badge-row">
-        <span class="hero-badge">Admissions</span>
-        <span class="hero-badge">Courses</span>
-        <span class="hero-badge">Faculty</span>
-        <span class="hero-badge">Events</span>
-        <span class="hero-badge">Research</span>
+    <div class="eyebrow">Interactive university support</div>
+    <div class="hero-title">Central University of Kashmir Assistant</div>
+    <p class="hero-copy">
+        Ask about admissions, examinations, departments, faculty, notices, and official university documents.
+        The interface is now lighter, source-aware, and built to make each answer easier to inspect and continue.
+    </p>
+    <div class="hero-pills">
+        <span class="hero-pill">Grounded answers</span>
+        <span class="hero-pill">Interactive evidence cards</span>
+        <span class="hero-pill">Follow-up prompts</span>
+        <span class="hero-pill">Adjustable answer depth</span>
     </div>
 </div>
-""", unsafe_allow_html=True)
+    """,
+    unsafe_allow_html=True,
+)
 
-# ── Session state ────────────────────────────────────────────────────────────
-if "history"  not in st.session_state: st.session_state.history  = []
-if "messages" not in st.session_state: st.session_state.messages = []
-
-# ── Suggested questions (first load only) ───────────────────────────────────
 if not st.session_state.messages:
-    st.markdown('<div class="section-label">Quick questions</div>', unsafe_allow_html=True)
-    questions = [
-        "📋  Admission process for 2026",
-        "📚  Courses available at CUK",
-        "📅  When is the CUET exam?",
-        "🔬  How to apply for PhD?",
-    ]
-    cols = st.columns(2)
-    for i, q in enumerate(questions):
-        if cols[i % 2].button(q, use_container_width=True, key=f"sq_{i}"):
-            st.session_state.pending_question = q.split("  ", 1)[-1]
-            st.rerun()
-    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown('<div class="section-title">Start with a quick question</div>', unsafe_allow_html=True)
+    prompt_columns = st.columns(3)
+    for index, question in enumerate(QUICK_PROMPTS):
+        if prompt_columns[index % 3].button(question, key=f"quick_prompt_{index}", use_container_width=True):
+            _queue_question(question)
 
-# ── Render chat history ──────────────────────────────────────────────────────
-for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
-        if msg["role"] == "assistant" and msg.get("sources"):
-            st.markdown('<div class="src-label">📚 Sources</div>', unsafe_allow_html=True)
-            badges = "".join(
-                f'<span class="src-badge">📄 {s}</span>' for s in msg["sources"]
-            )
-            st.markdown(f'<div>{badges}</div>', unsafe_allow_html=True)
+for index, message in enumerate(st.session_state.messages):
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
+        if message["role"] == "assistant":
+            _render_assistant_panels(message, index)
 
-# ── Input handling ───────────────────────────────────────────────────────────
-query = st.chat_input("Ask anything about Central University of Kashmir…")
-if hasattr(st.session_state, "pending_question"):
+query = st.chat_input("Ask about admissions, faculty, notices, results, dates, or official documents")
+if "pending_question" in st.session_state:
     query = st.session_state.pending_question
     del st.session_state.pending_question
 
@@ -421,28 +752,52 @@ if query:
     with st.chat_message("user"):
         st.markdown(query)
 
+    answer_style = STYLE_MAP.get(st.session_state.answer_style, "balanced")
+    assistant_message_index = len(st.session_state.messages)
+
     with st.chat_message("assistant"):
-        with st.spinner("Searching university documents…"):
-            stream, sources = run(query, st.session_state.history)
+        with st.spinner("Searching official university material..."):
+            stream, sources, details = run_with_metadata(
+                query,
+                st.session_state.history,
+                answer_style=answer_style,
+            )
 
         full_answer = ""
         placeholder = st.empty()
         for chunk in stream:
-            if hasattr(chunk, "text") and chunk.text:
-                full_answer += chunk.text
-                placeholder.markdown(full_answer + "▌")
+            text = getattr(chunk, "text", "")
+            if text:
+                full_answer += text
+                placeholder.markdown(full_answer + "|")
+        full_answer = _tidy_answer_citations(full_answer)
         placeholder.markdown(full_answer)
 
-        if sources:
-            st.markdown('<div class="src-label">📚 Sources</div>', unsafe_allow_html=True)
-            badges = "".join(
-                f'<span class="src-badge">📄 {s}</span>' for s in sources
-            )
-            st.markdown(f'<div>{badges}</div>', unsafe_allow_html=True)
+        abstained = _is_no_info_answer(full_answer)
+        visible_sources = sources
+        visible_follow_ups = _build_follow_ups(query, sources)
+        if abstained:
+            details = {
+                **details,
+                "answer_state": "abstained",
+                "suppressed_source_count": len(sources),
+            }
+            visible_sources = []
+            visible_follow_ups = []
+        else:
+            details = {
+                **details,
+                "answer_state": "answered",
+            }
+
+        message_payload = {
+            "role": "assistant",
+            "content": full_answer,
+            "sources": visible_sources,
+            "details": details,
+            "follow_ups": visible_follow_ups,
+        }
+        _render_assistant_panels(message_payload, assistant_message_index)
 
     st.session_state.history.append({"user": query, "bot": full_answer})
-    st.session_state.messages.append({
-        "role": "assistant",
-        "content": full_answer,
-        "sources": sources
-    })
+    st.session_state.messages.append(message_payload)

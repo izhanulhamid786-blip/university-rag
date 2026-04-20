@@ -13,6 +13,7 @@ from sentence_transformers import SentenceTransformer
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from rag.model_loading import quiet_transformer_loading
 from rag.settings import get_settings
 
 
@@ -225,10 +226,11 @@ _BM25_CACHE = {
 @lru_cache(maxsize=1)
 def _embedder() -> SentenceTransformer:
     settings = get_settings()
-    return SentenceTransformer(
-        settings.embed_model,
-        local_files_only=settings.local_files_only,
-    )
+    with quiet_transformer_loading():
+        return SentenceTransformer(
+            settings.embed_model,
+            local_files_only=settings.local_files_only,
+        )
 
 
 def preload_embedder() -> None:

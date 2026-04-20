@@ -8,6 +8,7 @@ from sentence_transformers import CrossEncoder
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from rag.model_loading import quiet_transformer_loading
 from rag.settings import get_settings
 
 
@@ -18,10 +19,11 @@ MIN_RERANK_SCORE = -2.3
 @lru_cache(maxsize=1)
 def _reranker() -> CrossEncoder:
     settings = get_settings()
-    return CrossEncoder(
-        settings.rerank_model,
-        local_files_only=settings.local_files_only,
-    )
+    with quiet_transformer_loading():
+        return CrossEncoder(
+            settings.rerank_model,
+            local_files_only=settings.local_files_only,
+        )
 
 
 def preload_reranker() -> None:
@@ -48,8 +50,8 @@ def rerank(query: str, chunks: list[dict], top_k: int | None = None) -> list[dic
     if filtered:
         ranked = filtered
     else:
-        log.warning(
-            "All rerank scores fell below %.2f for query %r; keeping top results as fallback.",
+        log.info(
+            "All rerank scores fell below %.2f for query %r; using relative rerank order as fallback.",
             MIN_RERANK_SCORE,
             query,
         )
