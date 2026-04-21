@@ -1,5 +1,6 @@
 import logging
 import sys
+from contextlib import contextmanager
 from functools import lru_cache
 from pathlib import Path
 
@@ -8,12 +9,33 @@ from sentence_transformers import CrossEncoder
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from rag.model_loading import quiet_transformer_loading
 from rag.settings import get_settings
 
 
 log = logging.getLogger(__name__)
 MIN_RERANK_SCORE = -2.3
+_TRANSFORMER_LOAD_LOGGERS = (
+    "transformers.core_model_loading",
+    "transformers.integrations.peft",
+    "transformers.integrations.tensor_parallel",
+    "transformers.modeling_utils",
+    "transformers.utils.loading_report",
+)
+
+
+@contextmanager
+def quiet_transformer_loading():
+    original_levels = []
+    try:
+        for name in _TRANSFORMER_LOAD_LOGGERS:
+            logger = logging.getLogger(name)
+            original_levels.append((logger, logger.level))
+            if logger.level < logging.ERROR:
+                logger.setLevel(logging.ERROR)
+        yield
+    finally:
+        for logger, level in original_levels:
+            logger.setLevel(level)
 
 
 @lru_cache(maxsize=1)
