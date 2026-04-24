@@ -11,5 +11,9 @@ data/structured/
 data/index.json
 data/.visited_urls.txt
 data/.doc_hashes.json
+data/.failed_urls.json
+data/.section_hashes.json
+
+crawler_config.json
 
 .streamlit/

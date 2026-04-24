@@ -1,7 +1,8 @@
 """RAG package for the university assistant.
 
-Phase 2 modules can stay tucked under ``rag/phase2`` while legacy imports
-such as ``rag.model_loading`` and ``rag.pipeline`` continue to work.
+Core modules now live directly under ``rag``. The ``rag.phase2`` package keeps
+small compatibility shims so older imports continue to work during the
+transition.
 """
 
 from pathlib import Path

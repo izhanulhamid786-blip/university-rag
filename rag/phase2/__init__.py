@@ -1,1 +1,1 @@
-"""Phase 2 RAG modules kept under a separate package."""
+"""Compatibility package for older ``rag.phase2`` imports."""
