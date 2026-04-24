@@ -1,4 +1,5 @@
 import logging
+import re
 import sys
 from contextlib import contextmanager
 from functools import lru_cache
@@ -14,6 +15,12 @@ from rag.settings import get_settings
 
 log = logging.getLogger(__name__)
 MIN_RERANK_SCORE = -2.3
+TABLE_FACT_QUERY_RE = re.compile(
+    r"\b(form|forms|application|registration|roll|number|numbers|selected|selection|eligible|"
+    r"eligibility|candidate|candidates|list|table)\b",
+    re.IGNORECASE,
+)
+FORM_NUMBER_RE = re.compile(r"\b(?:CUK\d{4,}|form\s*(?:no|nos|number|numbers)|application\s*(?:no|number|numbers))\b", re.I)
 _TRANSFORMER_LOAD_LOGGERS = (
     "transformers.core_model_loading",
     "transformers.integrations.peft",
@@ -52,6 +59,19 @@ def preload_reranker() -> None:
     _reranker()
 
 
+def _retrieval_prior(query: str, chunk: dict) -> float:
+    if not TABLE_FACT_QUERY_RE.search(query or ""):
+        return 0.0
+
+    prior = min(0.8, 1.5 * float(chunk.get("final_score", 0.0)))
+    text = " ".join([chunk.get("title") or "", chunk.get("text") or ""])
+    if chunk.get("has_table"):
+        prior += 0.12
+    if FORM_NUMBER_RE.search(text):
+        prior += 0.16
+    return prior
+
+
 def rerank(query: str, chunks: list[dict], top_k: int | None = None) -> list[dict]:
     settings = get_settings()
     limit = top_k or settings.rerank_top_k
@@ -67,8 +87,12 @@ def rerank(query: str, chunks: list[dict], top_k: int | None = None) -> list[dic
         log.warning("Reranker unavailable, falling back to retrieval order: %s", exc)
         return chunks[:limit]
 
-    ranked = sorted(zip(chunks, scores), key=lambda item: float(item[1]), reverse=True)
-    filtered = [item for item in ranked if float(item[1]) >= MIN_RERANK_SCORE]
+    ranked = sorted(
+        zip(chunks, scores),
+        key=lambda item: float(item[1]) + _retrieval_prior(query, item[0]),
+        reverse=True,
+    )
+    filtered = [item for item in ranked if float(item[1]) + _retrieval_prior(query, item[0]) >= MIN_RERANK_SCORE]
     if filtered:
         ranked = filtered
     else:
@@ -82,6 +106,7 @@ def rerank(query: str, chunks: list[dict], top_k: int | None = None) -> list[dic
     for chunk, score in ranked[:limit]:
         item = dict(chunk)
         item["rerank_score"] = float(score)
+        item["rerank_final_score"] = float(score) + _retrieval_prior(query, chunk)
         results.append(item)
     return results
 

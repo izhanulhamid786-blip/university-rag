@@ -42,6 +42,18 @@ CONTEXTUAL_WORD_RE = re.compile(
     re.IGNORECASE,
 )
 FOLLOW_UP_PREFIX_RE = re.compile(r"^\s*(and|also|what about|how about|then|now)\b", re.IGNORECASE)
+AMBIGUOUS_FOLLOW_UP_RE = re.compile(
+    r"\b(form\s*(?:no|nos|number|numbers)|application\s*(?:no|number|numbers)|"
+    r"registration\s*(?:no|number|numbers)|roll\s*(?:no|number|numbers)|"
+    r"list|names?|candidates?|selected|eligible|date|time|venue|link|details?)\b",
+    re.IGNORECASE,
+)
+SPECIFIC_CONTEXT_RE = re.compile(
+    r"\b(ph\.?\s*d|phd|media studies|communication|journalism|department|school|programme|program|"
+    r"admission|selection|selected|eligible|eligibility|interview|screening|presentation|ppt|"
+    r"cuet|ug|pg|faculty|professor|teacher|contact|email|phone)\b",
+    re.IGNORECASE,
+)
 
 
 def _extract_recent_person(history: list[dict]) -> str | None:
@@ -68,23 +80,63 @@ def _extract_recent_person(history: list[dict]) -> str | None:
     return None
 
 
-def _local_rewrite(query: str, history: list[dict]) -> str:
-    if not history or not REFERENCE_WORD_RE.search(query):
-        return query
+def _clean_recent_topic(text: str) -> str:
+    compact = " ".join((text or "").split())
+    compact = re.sub(r"\s*Sources:\s*\[\d+(?:,\s*\d+)*\].*$", "", compact, flags=re.IGNORECASE)
+    compact = re.sub(r"\[[0-9,\s]+\]", "", compact)
+    compact = compact.strip(" .:-")
+    if len(compact) > 220:
+        compact = compact[:220].rsplit(" ", 1)[0].strip()
+    return compact
 
-    person = _extract_recent_person(history)
-    if not person:
+
+def _extract_recent_topic(history: list[dict]) -> str | None:
+    for turn in reversed(history[-3:]):
+        user_text = _clean_recent_topic(turn.get("user") or "")
+        bot_text = _clean_recent_topic(turn.get("bot") or "")
+
+        for text in (user_text, bot_text):
+            if not text:
+                continue
+            if SPECIFIC_CONTEXT_RE.search(text):
+                return text
+    return None
+
+
+def _looks_context_dependent(query: str) -> bool:
+    clean = (query or "").strip()
+    if not clean:
+        return False
+    if REFERENCE_WORD_RE.search(clean) or CONTEXTUAL_WORD_RE.search(clean) or FOLLOW_UP_PREFIX_RE.search(clean):
+        return True
+    return bool(AMBIGUOUS_FOLLOW_UP_RE.search(clean) and not SPECIFIC_CONTEXT_RE.search(clean))
+
+
+def _local_rewrite(query: str, history: list[dict]) -> str:
+    if not history or not _looks_context_dependent(query):
         return query
 
     rewritten = query
-    rewritten = re.sub(r"\bhis\b", f"{person}'s", rewritten, flags=re.IGNORECASE)
-    rewritten = re.sub(r"\bher\b", f"{person}'s", rewritten, flags=re.IGNORECASE)
-    rewritten = re.sub(r"\btheir\b", f"{person}'s", rewritten, flags=re.IGNORECASE)
-    rewritten = re.sub(r"\bhim\b", person, rewritten, flags=re.IGNORECASE)
-    rewritten = re.sub(r"\bthem\b", person, rewritten, flags=re.IGNORECASE)
-    rewritten = re.sub(r"\bhe\b", person, rewritten, flags=re.IGNORECASE)
-    rewritten = re.sub(r"\bshe\b", person, rewritten, flags=re.IGNORECASE)
-    rewritten = re.sub(r"\bthey\b", person, rewritten, flags=re.IGNORECASE)
+    person = _extract_recent_person(history)
+    if person:
+        rewritten = re.sub(r"\bhis\b", f"{person}'s", rewritten, flags=re.IGNORECASE)
+        rewritten = re.sub(r"\bher\b", f"{person}'s", rewritten, flags=re.IGNORECASE)
+        rewritten = re.sub(r"\bhim\b", person, rewritten, flags=re.IGNORECASE)
+        rewritten = re.sub(r"\bhe\b", person, rewritten, flags=re.IGNORECASE)
+        rewritten = re.sub(r"\bshe\b", person, rewritten, flags=re.IGNORECASE)
+
+    topic = _extract_recent_topic(history)
+    plural_reference = re.search(r"\b(they|them|their|theirs|there|these|those|mentioned|above|below)\b", query, re.I)
+    still_ambiguous = (
+        plural_reference
+        or AMBIGUOUS_FOLLOW_UP_RE.search(query)
+        or CONTEXTUAL_WORD_RE.search(query)
+        or FOLLOW_UP_PREFIX_RE.search(query)
+    )
+    if topic and still_ambiguous and topic.lower() not in rewritten.lower():
+        rewritten = re.sub(r"\bthere\b", "their", rewritten, flags=re.IGNORECASE)
+        rewritten = f"{rewritten.rstrip(' ?')}; context: {topic}"
+
     return rewritten
 
 
@@ -95,8 +147,10 @@ def rewrite_query(query: str, history: list[dict]) -> str:
     local_rewrite = _local_rewrite(query, history)
     if REFERENCE_WORD_RE.search(query):
         return local_rewrite
+    if local_rewrite != query:
+        return local_rewrite
 
-    should_try_llm = bool(CONTEXTUAL_WORD_RE.search(query) or FOLLOW_UP_PREFIX_RE.search(query))
+    should_try_llm = _looks_context_dependent(query)
     if not should_try_llm:
         return local_rewrite
 

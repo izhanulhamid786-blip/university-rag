@@ -175,6 +175,22 @@ def _is_quota_error(exc: Exception) -> bool:
     return "429" in message or "resource_exhausted" in message or "quota" in message
 
 
+def _is_temporary_model_error(exc: Exception) -> bool:
+    code = getattr(exc, "status_code", None)
+    if code is None:
+        code = getattr(exc, "code", None)
+    if code in {429, 503}:
+        return True
+
+    message = str(exc).lower()
+    return (
+        _is_quota_error(exc)
+        or "503" in message
+        or "unavailable" in message
+        or "high demand" in message
+    )
+
+
 def _generation_stream(prompt: str, *, query: str, fallback_chunks: list[dict]):
     try:
         client = get_genai_client(required=True)
@@ -190,8 +206,8 @@ def _generation_stream(prompt: str, *, query: str, fallback_chunks: list[dict]):
                 return
             except Exception as exc:
                 last_error = exc
-                if _is_quota_error(exc):
-                    log.warning("Generation quota hit for model %s: %s", model_name, exc)
+                if _is_temporary_model_error(exc):
+                    log.warning("Generation unavailable for model %s: %s", model_name, exc)
                     continue
                 raise
         if last_error is not None:
@@ -200,7 +216,7 @@ def _generation_stream(prompt: str, *, query: str, fallback_chunks: list[dict]):
         log.warning("Generator configuration issue: %s", exc)
         yield TextChunk(str(exc))
     except Exception as exc:
-        log.exception("Generation failed")
+        log.warning("Generation failed; using local fallback: %s", exc)
         yield TextChunk(
             _local_fallback_answer(
                 query,
@@ -325,8 +341,19 @@ def run(
 
 
 if __name__ == "__main__":
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+
     stream, sources = run("What is the admission process at CUK?", [])
     for item in stream:
         if getattr(item, "text", ""):
             print(item.text, end="", flush=True)
-    print("\n\nSources:", sources)
+    if sources:
+        print("\n\nSources:")
+        for source in sources:
+            label = source.get("label") or "Untitled source"
+            citation = source.get("citation", "?")
+            location = source.get("url") or source.get("path") or ""
+            print(f"[{citation}] {label}")
+            if location:
+                print(f"    {location}")

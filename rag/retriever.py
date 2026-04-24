@@ -21,6 +21,7 @@ log = logging.getLogger(__name__)
 TOKEN_RE = re.compile(r"\w+")
 EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.I)
 PHONE_RE = re.compile(r"(?:\+91[\s-]?)?(?:\d[\s-]?){10,13}")
+FORM_NUMBER_RE = re.compile(r"\b(?:CUK\d{4,}|form\s*(?:no|nos|number|numbers)|application\s*(?:no|number|numbers))\b", re.I)
 RRF_K = 60
 STOP_WORDS = {
     "a",
@@ -124,6 +125,53 @@ STAFF_QUERY_WORDS = {
 }
 CONTACT_QUERY_WORDS = {"contact", "contacts", "email", "emails", "phone", "phones", "mobile", "office", "address"}
 COUNT_QUERY_WORDS = {"count", "counts", "many", "number", "numbers", "total", "totals"}
+FORM_NUMBER_WORDS = {
+    "form",
+    "forms",
+    "application",
+    "applications",
+    "registration",
+    "roll",
+    "number",
+    "numbers",
+    "no",
+    "nos",
+}
+SELECTION_WORDS = {
+    "selected",
+    "selection",
+    "shortlisted",
+    "eligible",
+    "eligibility",
+    "candidate",
+    "candidates",
+    "list",
+    "lists",
+    "interview",
+    "screening",
+    "presentation",
+    "ppt",
+}
+PROGRAMME_NAME_HINTS = {
+    "biotechnology",
+    "botany",
+    "chemistry",
+    "civil engineering",
+    "communication",
+    "journalism",
+    "economics",
+    "education",
+    "english",
+    "information technology",
+    "law",
+    "management",
+    "mathematics",
+    "physical education",
+    "physics",
+    "tourism studies",
+    "urdu",
+    "zoology",
+}
 STAFF_TEXT_HINTS = {
     "professor",
     "prof.",
@@ -221,6 +269,21 @@ _BM25_CACHE = {
     "metadatas": None,
     "ids": None,
 }
+QUERY_EXPANSIONS = (
+    ({"phd", "ph"}, "ph.d ph d doctoral research programme admission admissions"),
+    (
+        {"media", "journalism", "communication"},
+        "media studies communication journalism school department convergent journalism mass communication",
+    ),
+    (
+        FORM_NUMBER_WORDS,
+        "form number application number registration number roll number CUK000 candidate table",
+    ),
+    (
+        SELECTION_WORDS,
+        "selected selection eligible eligibility provisional candidates list admission interview screening documents presentation ppt",
+    ),
+)
 
 _TRANSFORMER_LOAD_LOGGERS = (
     "transformers.core_model_loading",
@@ -338,6 +401,40 @@ def _is_count_intent(query_tokens: set[str]) -> bool:
     return "how" in query_tokens and "many" in query_tokens or bool(query_tokens & COUNT_QUERY_WORDS)
 
 
+def _is_form_number_intent(query_tokens: set[str]) -> bool:
+    return bool(query_tokens & FORM_NUMBER_WORDS) and bool(query_tokens & {"number", "numbers", "no", "nos", "form", "forms"})
+
+
+def _is_selection_intent(query_tokens: set[str]) -> bool:
+    return bool(query_tokens & SELECTION_WORDS)
+
+
+def _needs_multi_chunk_evidence(query_tokens: set[str]) -> bool:
+    return (
+        _is_form_number_intent(query_tokens)
+        or _is_selection_intent(query_tokens)
+        or bool(query_tokens & {"all", "every", "full", "complete", "table", "tables"})
+    )
+
+
+def _expanded_query(query: str) -> str:
+    tokens = set(_tokenize(query))
+    additions = []
+    for trigger_tokens, expansion in QUERY_EXPANSIONS:
+        if tokens & trigger_tokens:
+            additions.append(expansion)
+
+    lower = query.lower()
+    if "there form" in lower:
+        additions.append("their form number application number candidate")
+    if "form number" in lower or "form numbers" in lower:
+        additions.append("Name Form Number Gender Category Remarks")
+
+    if not additions:
+        return query
+    return f"{query} {' '.join(additions)}"
+
+
 def _coerce_bool(value: str | bool | None) -> bool:
     if isinstance(value, bool):
         return value
@@ -396,6 +493,33 @@ def _display_title(title: str | None, source_url: str | None) -> str:
     if current_is_generic and source_name:
         return source_name
     return current or source_name or "Untitled"
+
+
+def _refine_generic_title(item: dict) -> dict:
+    title = (item.get("title") or "").strip()
+    lower_title = title.lower()
+    if lower_title not in {"updated", "untitled"} and not re.match(r"^\d{6,}\s+updated$", lower_title):
+        return item
+
+    for raw_line in (item.get("text") or "").splitlines():
+        line = raw_line.strip(" .:-")
+        lower_line = line.lower()
+        if not line or lower_line.startswith(("title:", "category:", "url:", "type:")):
+            continue
+        if any(
+            hint in lower_line
+            for hint in (
+                "eligibility list",
+                "selection list",
+                "shortlisted",
+                "interview",
+                "notification",
+                "notice",
+            )
+        ):
+            item["title"] = line[:140]
+            break
+    return item
 
 
 def _intent_categories(query_tokens: set[str]) -> set[str]:
@@ -518,9 +642,12 @@ def _heuristic_score(item: dict, query_tokens: set[str], intent_categories: set[
     category = (item.get("category") or "").lower()
     text = (item.get("text") or "").lower()
     url = (item.get("source_url") or "").lower()
+    title = (item.get("title") or "").lower()
     staff_intent = _is_staff_intent(query_tokens)
     contact_intent = _is_contact_intent(query_tokens)
     count_intent = _is_count_intent(query_tokens)
+    form_number_intent = _is_form_number_intent(query_tokens)
+    selection_intent = _is_selection_intent(query_tokens)
 
     score += _metadata_overlap_score(item, query_tokens)
     score += _entity_match_score(item, query_tokens)
@@ -539,6 +666,34 @@ def _heuristic_score(item: dict, query_tokens: set[str], intent_categories: set[
 
     if any(hint in url for hint in DEPARTMENT_URL_HINTS) and not (query_tokens & INTENT_CATEGORY_HINTS["departments"]):
         score -= 0.03
+
+    if form_number_intent:
+        if FORM_NUMBER_RE.search(text) or FORM_NUMBER_RE.search(title):
+            score += 0.085
+        if item.get("has_table"):
+            score += 0.055
+        if float(item.get("table_row_count", 0)) >= 2:
+            score += 0.035
+        if "form number" in text or "form number" in title:
+            score += 0.04
+
+    if selection_intent:
+        if category in {"admissions", "departments", "results"}:
+            score += 0.025
+        if any(word in text or word in title for word in ("selected", "selection list", "eligible", "eligibility list")):
+            score += 0.055
+        if any(word in text or word in title for word in ("interview", "screening", "presentation", "ppt")):
+            score += 0.025
+
+    if {"media", "studies"} <= query_tokens:
+        exact_media_hits = text.count("media studies") + title.count("media studies")
+        if exact_media_hits:
+            score += min(0.12, 0.04 * exact_media_hits)
+        if "school of media studies" in text or "department of communication and journalism" in text:
+            score += 0.08
+        programme_mentions = sum(1 for hint in PROGRAMME_NAME_HINTS if hint in text)
+        if programme_mentions >= 6 and "school of media studies" not in text:
+            score -= 0.04
 
     score += _staff_query_score(
         item,
@@ -603,7 +758,7 @@ def _get_bm25():
 
 def _dense_search(query: str, k: int) -> list[dict]:
     collection = get_collection(required=True)
-    embedding = _embedder().encode([query], normalize_embeddings=True).tolist()
+    embedding = _embedder().encode([_expanded_query(query)], normalize_embeddings=True).tolist()
     results = collection.query(
         query_embeddings=embedding,
         n_results=k,
@@ -624,7 +779,7 @@ def _dense_search(query: str, k: int) -> list[dict]:
             "dense_score": max(0.0, 1 - float(distance)),
             **_unpack(meta),
         }
-        rows.append(row)
+        rows.append(_refine_generic_title(row))
     return rows
 
 
@@ -633,7 +788,7 @@ def _bm25_search(query: str, k: int) -> list[dict]:
     if bm25 is None:
         return []
 
-    scores = bm25.get_scores(_tokenize(query))
+    scores = bm25.get_scores(_tokenize(_expanded_query(query)))
     top_indices = sorted(range(len(scores)), key=lambda index: scores[index], reverse=True)[:k]
 
     rows = []
@@ -646,7 +801,7 @@ def _bm25_search(query: str, k: int) -> list[dict]:
             "bm25_score": float(scores[index]),
             **_unpack(metadatas[index]),
         }
-        rows.append(row)
+        rows.append(_refine_generic_title(row))
     return rows
 
 
@@ -693,23 +848,24 @@ def hybrid_retrieve(query: str, k: int | None = None) -> list[dict]:
         item["heuristic_score"] = _heuristic_score(item, query_tokens, intent_categories)
         item["final_score"] = item["rrf_score"] + item["heuristic_score"]
 
-    deduped = {}
-    for item in ranked:
-        key = _source_key(item)
-        current = deduped.get(key)
-        if current is None:
-            deduped[key] = item
-            continue
-        if (
-            item["final_score"] > current["final_score"]
-            or (
-                item["final_score"] == current["final_score"]
-                and item.get("chunk_index", 0) < current.get("chunk_index", 0)
-            )
-        ):
-            deduped[key] = item
+    if not _needs_multi_chunk_evidence(query_tokens):
+        deduped = {}
+        for item in ranked:
+            key = _source_key(item)
+            current = deduped.get(key)
+            if current is None:
+                deduped[key] = item
+                continue
+            if (
+                item["final_score"] > current["final_score"]
+                or (
+                    item["final_score"] == current["final_score"]
+                    and item.get("chunk_index", 0) < current.get("chunk_index", 0)
+                )
+            ):
+                deduped[key] = item
 
-    ranked = list(deduped.values())
+        ranked = list(deduped.values())
     ranked.sort(
         key=lambda item: (
             item.get("final_score", item["rrf_score"]),

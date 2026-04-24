@@ -195,6 +195,20 @@ class SmokeTests(unittest.TestCase):
         self.assertNotIn("Associate Professor's contact info", rewritten)
         client_mock.assert_not_called()
 
+    def test_memory_rewrite_carries_forward_list_context_for_form_numbers(self):
+        history = [
+            {
+                "user": "who got selected for phd in media studies",
+                "bot": "The eligible candidates for the Ph.D. Programme in Media Studies include Yameen Majeed Dar, Aaliya Ahmad, and others.",
+            }
+        ]
+        with patch("rag.memory.get_genai_client", return_value=None):
+            rewritten = rewrite_query("what are there form numbers", history)
+
+        self.assertIn("form numbers", rewritten)
+        self.assertIn("phd in media studies", rewritten.lower())
+        self.assertIn("context:", rewritten.lower())
+
     def test_pipeline_uses_rewritten_query_for_generation_prompt(self):
         history = [{"user": "who is the coordinator of media studies", "bot": "Prof. Shahid Rasool is listed there."}]
         candidates = [
@@ -333,6 +347,46 @@ class SmokeTests(unittest.TestCase):
             results = hybrid_retrieve("what is Prof Shahid Rasool contact email", k=2)
 
         self.assertEqual(results[0]["chunk_id"], "contact-1")
+
+    def test_form_number_queries_prefer_selection_table_records(self):
+        settings = SimpleNamespace(retrieval_k=3)
+        table_item = {
+            "chunk_id": "media-table",
+            "title": "Eligibility list of candidates applied for Ph.D. Programme - 2025 in Media Studies",
+            "source_url": "https://cukapi.disgenweb.in/p/admission/updated.pdf",
+            "source_path": "data/structured/updated.json",
+            "category": "departments",
+            "text": "School of Media Studies S. No | Name of the Candidate | Form Number | Gender | Category | Remarks Yameen Majeed Dar | CUK0000602 | Male | General | Eligible",
+            "has_links": False,
+            "links": [],
+            "has_table": True,
+            "table_row_count": 8,
+            "contact_field_count": 0,
+            "chunk_index": 0,
+            "dense_score": 0.4,
+        }
+        generic_form = {
+            "chunk_id": "blank-form",
+            "title": "Integrated MPhil-Ph.D Examination Form",
+            "source_url": "https://cukapi.disgenweb.in/p/upload/ExamForm_MPhilPhD.pdf",
+            "source_path": "data/structured/exam-form.json",
+            "category": "general",
+            "text": "Integrated MPhil-Ph.D/Ph.D Examination Form Department Programme Enrolment Reg. No.",
+            "has_links": False,
+            "links": [],
+            "has_table": False,
+            "table_row_count": 0,
+            "contact_field_count": 0,
+            "chunk_index": 0,
+            "dense_score": 0.55,
+        }
+
+        with patch("rag.retriever.get_settings", return_value=settings), \
+             patch("rag.retriever._dense_search", return_value=[generic_form, table_item]), \
+             patch("rag.retriever._bm25_search", return_value=[table_item, generic_form]):
+            results = hybrid_retrieve("what are form numbers for phd media studies selected candidates", k=2)
+
+        self.assertEqual(results[0]["chunk_id"], "media-table")
 
     def test_rerank_keeps_relative_order_for_all_low_scores_without_warning(self):
         chunks = [
