@@ -27,6 +27,37 @@ NOISE_PATTERNS = [
     re.compile(r"original text\s+rate this translation", re.I),
     re.compile(r"your feedback will be used to help improve google translate", re.I),
 ]
+BLOCKED_SOURCE_PATTERNS = [
+    re.compile(r"/citationstylelanguage/get/", re.I),
+    re.compile(r"/gateway/plugin/WebFeedGatewayPlugin/", re.I),
+    re.compile(r"/\$\$\$call\$\$\$/page/page/css", re.I),
+    re.compile(r"/page/page/css", re.I),
+    re.compile(r"/user/register", re.I),
+    re.compile(r"/user/login", re.I),
+    re.compile(r"/favicon", re.I),
+    re.compile(r"[?&]name=(?:font|stylesheet)(?:&|$)", re.I),
+]
+MIN_STRUCTURED_QUALITY_SCORE = 2
+HIGH_VALUE_CATEGORIES = {
+    "admissions",
+    "fees",
+    "results",
+    "examinations",
+    "faculty",
+    "departments",
+    "contact",
+    "notices",
+    "recruitment",
+    "tenders",
+    "academics",
+    "downloads",
+    "library",
+    "hostels",
+    "rti",
+    "about",
+    "campuses",
+    "accreditation",
+}
 LINK_TAGS = {
     "admission": ["admission", "apply", "enroll", "cuet"],
     "fee": ["fee", "payment", "scholarship"],
@@ -61,12 +92,47 @@ def _looks_like_error_page(title: str, text: str) -> bool:
     return any(
         phrase in combined
         for phrase in (
+            "page not found",
+            "the page you're looking for does not seem to exist",
             "server error",
             "404 not found",
             "the resource cannot be found",
             "internal server error",
         )
     )
+
+
+def _is_blocked_source(url: str | None, title: str = "") -> bool:
+    haystack = f"{url or ''} {title or ''}"
+    return any(pattern.search(haystack) for pattern in BLOCKED_SOURCE_PATTERNS)
+
+
+def _has_useful_structured_signal(payload: dict) -> bool:
+    return bool(
+        payload.get("document_links")
+        or payload.get("notices")
+        or payload.get("contacts")
+        or payload.get("has_table")
+        or payload.get("table_count")
+    )
+
+
+def _should_load_structured_record(payload: dict) -> bool:
+    title = payload.get("title") or ""
+    text = payload.get("text") or ""
+    source_url = payload.get("url") or ""
+    if _is_blocked_source(source_url, title):
+        return False
+    if _looks_like_error_page(title, text):
+        return False
+
+    quality = int(payload.get("quality_score") or 0)
+    category = payload.get("category", "general")
+    if quality >= MIN_STRUCTURED_QUALITY_SCORE:
+        return True
+    if category in HIGH_VALUE_CATEGORIES and _has_useful_structured_signal(payload):
+        return True
+    return False
 
 
 def _categorize_link(url: str, anchor_text: str) -> list[str]:
@@ -263,8 +329,8 @@ def load_structured_records(structured_dir: str | Path | None = None) -> list[di
         title = payload.get("title") or path.stem
         source_url = payload.get("url")
         tables = payload.get("tables") or []
-        if _looks_like_error_page(title, payload.get("text", "")):
-            log.warning("Skipping error page: %s", path.name)
+        if not _should_load_structured_record(payload):
+            log.debug("Skipping low-value structured record: %s - %s", path.name, title)
             continue
         doc = _make_doc(
             text=_structured_text(payload),
@@ -287,7 +353,7 @@ def load_structured_records(structured_dir: str | Path | None = None) -> list[di
             continue
 
         docs.append(doc)
-        log.info("[CRAWLER] %s - %s", path.name, title)
+        log.debug("[CRAWLER] %s - %s", path.name, title)
 
     return docs
 
@@ -456,7 +522,7 @@ def load_legacy_root_files(data_dir: str | Path | None = None) -> list[dict]:
     for path in sorted(root.iterdir()):
         if not path.is_file():
             continue
-        if path.name.startswith("."):
+        if path.name.startswith(".") or path.name == "index.json":
             continue
         doc = _raw_doc_from_path(path, source_kind="legacy_raw")
         if doc is None:

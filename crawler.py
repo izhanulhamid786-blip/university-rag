@@ -140,6 +140,15 @@ DEFAULT_CONFIG = {
         r"/wp-admin",
         r"/login",
         r"/signin",
+        r"/user/register",
+        r"/user/login",
+        r"/citationstylelanguage/get/",
+        r"/gateway/plugin/WebFeedGatewayPlugin/",
+        r"/\$\$\$call\$\$\$/page/page/css",
+        r"/page/page/css",
+        r"/favicon",
+        r"/public/journals/.+\.(?:png|jpe?g|gif|svg|ico)(?:\?|$)",
+        r"[?&]name=(?:font|stylesheet)(?:&|$)",
         r"\.js(\?|$)",
         r"\.css(\?|$)",
         r"\.ico$",
@@ -158,6 +167,8 @@ DEFAULT_CONFIG = {
         r"linkedin\.com",
         r"google\.com",
     ],
+    "drop_low_quality_records": True,
+    "min_quality_score": 2,
     "button_trigger_words": ["all", "more", "view", "show", "load", "browse", "explore", "read"],
     "category_synonyms": {
         "admissions": [
@@ -298,6 +309,8 @@ MAX_RETRIES = int(CONFIG["max_retries"])
 RETRY_BACKOFF_SECONDS = float(CONFIG["retry_backoff_seconds"])
 ALLOWED_DOMAINS = set(CONFIG["allowed_domains"])
 BLOCK_PATTERNS = list(CONFIG["block_patterns"])
+DROP_LOW_QUALITY_RECORDS = bool(CONFIG.get("drop_low_quality_records", True))
+MIN_QUALITY_SCORE = int(CONFIG.get("min_quality_score", 2))
 BUTTON_TRIGGER_WORDS = tuple(w.lower() for w in CONFIG.get("button_trigger_words", []))
 CATEGORY_SYNONYMS = CONFIG["category_synonyms"]
 HIGH_VALUE_TERMS = sorted({term.lower() for terms in CATEGORY_SYNONYMS.values() for term in terms}, key=len, reverse=True)
@@ -369,6 +382,17 @@ def is_blocked(url: str) -> bool:
     return any(re.search(pat, url, re.I) for pat in BLOCK_PATTERNS)
 
 
+def is_crawlable_url(url: str) -> bool:
+    if not url:
+        return False
+    if is_blocked(url) or not is_allowed(url):
+        return False
+    fragment = (urlparse(url).fragment or "").lower().strip("/")
+    if fragment in {"one", "two", "three", "four", "five", "six", "seven"}:
+        return False
+    return True
+
+
 def is_binary(url: str) -> bool:
     return url.lower().split("?")[0].rsplit(".", 1)[-1] in {"pdf", "docx", "doc", "xlsx", "xls", "txt"}
 
@@ -429,6 +453,60 @@ def quality_score(url: str, text: str, title: str = "") -> int:
             if category in {"admissions", "fees", "results", "examinations", "notices", "recruitment"}:
                 score += 2
     return score
+
+
+ERROR_PAGE_PHRASES = (
+    "page not found",
+    "the page you're looking for does not seem to exist",
+    "404 not found",
+    "server error",
+    "internal server error",
+    "the resource cannot be found",
+)
+
+
+HIGH_VALUE_CATEGORIES = {
+    "admissions",
+    "fees",
+    "results",
+    "examinations",
+    "faculty",
+    "departments",
+    "contact",
+    "notices",
+    "recruitment",
+    "tenders",
+    "academics",
+    "downloads",
+    "library",
+    "hostels",
+    "rti",
+    "about",
+    "campuses",
+    "accreditation",
+}
+
+
+def looks_like_error_record(record: dict) -> bool:
+    combined = clean_text(f"{record.get('title', '')}\n{record.get('text', '')}").lower()
+    return any(phrase in combined for phrase in ERROR_PAGE_PHRASES)
+
+
+def should_index_record(record: dict) -> bool:
+    if looks_like_error_record(record):
+        return False
+    if is_blocked(record.get("url", "")):
+        return False
+    if not DROP_LOW_QUALITY_RECORDS:
+        return True
+    score = int(record.get("quality_score") or 0)
+    if score >= MIN_QUALITY_SCORE:
+        return True
+    if record.get("document_links") or record.get("notices") or record.get("contacts"):
+        return True
+    if record.get("has_table") and record.get("category") in HIGH_VALUE_CATEGORIES:
+        return True
+    return False
 
 
 def priority_of(url: str) -> int:
@@ -752,15 +830,15 @@ def extract_html(html: str, url: str, render_time_ms: int | None = None) -> dict
     for link in harvest_links_from_soup(soup, url):
         if is_binary(link):
             document_links.add(link)
-        if is_allowed(link) and not is_blocked(link):
+        if is_crawlable_url(link):
             outlinks.add(link)
 
     for notice in notices:
         link = (notice or {}).get("link")
-        if link and not is_blocked(link):
+        if link and is_crawlable_url(link):
             if is_binary(link):
                 document_links.add(normalise(link))
-            elif is_allowed(link):
+            else:
                 outlinks.add(normalise(link))
 
     record = {
@@ -798,7 +876,7 @@ def harvest_links_from_soup(soup: BeautifulSoup, current_url: str) -> set[str]:
                 if not value or is_blocked(value):
                     continue
                 abs_url = route_url(value, current_url) if "router" in attr else normalise(urljoin(current_url, value))
-                if is_allowed(abs_url) and not is_blocked(abs_url):
+                if is_crawlable_url(abs_url):
                     links.add(abs_url)
     return links
 
@@ -1300,6 +1378,11 @@ class UniversityCrawler:
             self.stats["skipped"] += 1
             self._mark_visited(url)
             return True
+        if not should_index_record(record):
+            self.stats["skipped"] += 1
+            self._mark_visited(url)
+            log.info(f"[SKIP-LOW-VALUE] Q={record.get('quality_score', 0)} | {record.get('title', '')[:55]}")
+            return True
 
         self._save(record)
         self._mark_visited(url)
@@ -1393,6 +1476,11 @@ class UniversityCrawler:
                 pass
 
         if record:
+            if not should_index_record(record):
+                self.stats["skipped"] += 1
+                self._mark_visited(url)
+                log.info(f"[SKIP-LOW-VALUE] Q={record.get('quality_score', 0)} | {record.get('title', '')[:55]}")
+                return True
             record["retry_count"] = self.retry_counts.get(url, 0)
             self._save(record)
             self.stats["chars"] += len(record.get("text", ""))
