@@ -75,7 +75,7 @@ Key runtime settings are defined in `.env.example`.
 - `GOOGLE_API_KEY`: Gemini API key
 - `GENERATOR_MODEL`: main answer generation model
 - `FALLBACK_GENERATOR_MODEL`: fallback generation model
-- `RAG_EMBED_MODEL`: embedding model for vector search
+- `RAG_EMBED_MODEL`: embedding model for vector search (default: `BAAI/bge-m3`)
 - `RAG_RERANK_MODEL`: cross-encoder reranker
 - `RAG_RETRIEVAL_K`: number of retrieved candidates
 - `RAG_RERANK_TOP_K`: final number of chunks passed into prompt building

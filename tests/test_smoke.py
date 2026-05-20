@@ -115,6 +115,43 @@ class SmokeTests(unittest.TestCase):
         self.assertIn("Title: Admissions", chunks[0]["text"])
         self.assertIn("URL: https://cukashmir.ac.in/#/admissions", chunks[0]["text"])
 
+    def test_chunker_keeps_semester_syllabus_blocks_semantic(self):
+        docs = [
+            {
+                "text": (
+                    "B.Tech. CSE\n"
+                    "Programme Outcome\n"
+                    "Students will solve complex engineering problems.\n\n"
+                    "Syllabus\n"
+                    "B.Tech. CSE Batch 2024\n"
+                    "Semester 1\n"
+                    "BTCS-101 Programming Fundamentals Credits 4\n"
+                    "BTCS-102 Data Structures Credits 4\n"
+                    "Semester 2\n"
+                    "BTCS-201 Algorithms Credits 4\n"
+                    "BTCS-202 Database Systems Credits 4\n"
+                ),
+                "links": [],
+                "source": "https://cukashmir.ac.in/#/departmentList;id=abc",
+                "source_path": "data/structured/department.json",
+                "source_url": "https://cukashmir.ac.in/#/departmentList;id=abc",
+                "title": "B.Tech. CSE",
+                "category": "academics",
+                "file_type": "html",
+                "doc_id": "doc-syllabus",
+                "source_kind": "crawler",
+                "scraped_at": None,
+                "ocr": False,
+            }
+        ]
+
+        chunks = chunk(docs)
+
+        self.assertTrue(chunks)
+        self.assertEqual({item["chunk_strategy"] for item in chunks}, {"semantic"})
+        self.assertTrue(any(item["semantic_kind"] == "syllabus" for item in chunks))
+        self.assertTrue(any("Semester 1" in item["raw_text"] and "BTCS-101" in item["raw_text"] for item in chunks))
+
     def test_prompt_includes_source_numbers(self):
         prompt = build_prompt(
             "What is the admission process?",
@@ -273,6 +310,23 @@ class SmokeTests(unittest.TestCase):
         self.assertIn("Give a short summary first", prompt)
         self.assertIn("Answer with citations:", prompt)
 
+    def test_prompt_treats_who_is_as_narrow_person_lookup(self):
+        prompt = build_prompt(
+            "who is Afaq Alam Khan",
+            [
+                {
+                    "title": "Directory",
+                    "source_url": "https://cukashmir.ac.in/#/contact",
+                    "category": "contact",
+                    "text": "Er. Afaq Alam Khan 9469054115 afaqalamkhan@gmail.com",
+                }
+            ],
+            [],
+        )
+
+        self.assertIn("confirmed identity, role, department, and direct contact details", prompt)
+        self.assertIn("Do not include incidental event, course, workshop", prompt)
+
     def test_run_with_metadata_returns_source_preview_and_counts(self):
         history = []
         candidates = [
@@ -419,6 +473,31 @@ class SmokeTests(unittest.TestCase):
             results = reranker.rerank("admissions", chunks, top_k=3)
 
         self.assertEqual([item["title"] for item in results], ["Top", "Keep"])
+
+    def test_rerank_exact_person_lookup_prefers_directory_facts(self):
+        chunks = [
+            {
+                "title": "Supplementary SSR",
+                "category": "academics",
+                "source_url": "https://cukapi.disgenweb.in/p/upload/ssr.pdf",
+                "text": "Mr. Afaq Alam Khan attended a short term course at IIT Kanpur and other workshops.",
+                "contact_field_count": 0,
+            },
+            {
+                "title": "Teaching Directory",
+                "category": "contact",
+                "source_url": "https://cukapi.disgenweb.in/p/upload/directory.pdf",
+                "text": "51. Er. Afaq Alam Khan 9469054115 afaqalamkhan@gmail.com",
+                "contact_field_count": 2,
+            },
+        ]
+        mock_model = SimpleNamespace(predict=lambda pairs: [3.2, 1.7])
+
+        with patch("rag.reranker.get_settings", return_value=SimpleNamespace(rerank_top_k=2)), \
+             patch("rag.reranker._reranker", return_value=mock_model):
+            results = reranker.rerank("who is afaq alam khan", chunks, top_k=2)
+
+        self.assertEqual(results[0]["title"], "Teaching Directory")
 
 
 if __name__ == "__main__":

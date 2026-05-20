@@ -99,7 +99,7 @@ def get_settings() -> Settings:
         doc_hashes_path=_env_path("RAG_DOC_HASHES_PATH", data_dir / ".doc_hashes.json"),
         vector_db_dir=_env_path("RAG_VECTOR_DB_DIR", PROJECT_ROOT / "vector_db"),
         collection_name=os.getenv("RAG_COLLECTION", "university_kb"),
-        embed_model=os.getenv("RAG_EMBED_MODEL", "BAAI/bge-base-en-v1.5"),
+        embed_model=os.getenv("RAG_EMBED_MODEL", "BAAI/bge-m3"),
         rerank_model=os.getenv("RAG_RERANK_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2"),
         generator_model=os.getenv("GENERATOR_MODEL", "gemini-2.5-flash"),
         fallback_generator_model=(

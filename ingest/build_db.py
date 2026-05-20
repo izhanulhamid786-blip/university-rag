@@ -11,6 +11,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from ingest.chunker import chunk
 from ingest.loader import load_all
+from rag.model_loading import (
+    clear_broken_proxy_env,
+    recover_closed_huggingface_session,
+    reset_huggingface_session_if_closed,
+)
 from rag.settings import get_settings
 
 
@@ -30,6 +35,8 @@ def _metadata(chunk_item: dict) -> dict:
         "file_type": chunk_item["file_type"],
         "chunk_index": str(chunk_item["chunk_index"]),
         "chunk_total": str(chunk_item["chunk_total"]),
+        "chunk_strategy": chunk_item.get("chunk_strategy", "semantic"),
+        "semantic_kind": chunk_item.get("semantic_kind", "paragraph"),
         "has_links": str(bool(chunk_item["has_links"])).lower(),
         "links": json.dumps(chunk_item["links"][:15]),
         "scraped_at": chunk_item.get("scraped_at") or "",
@@ -47,7 +54,7 @@ def build(reset: bool = False) -> int:
     documents = load_all()
     chunks = chunk(documents)
     if not chunks:
-        print("No chunks found. Add crawler output under data/structured or curated files under data/manual.")
+        print("No chunks found. Add crawler output under data/structured or manual files under data/manual.")
         return 1
 
     print(f"  {len(documents)} docs -> {len(chunks)} chunks")
@@ -55,10 +62,19 @@ def build(reset: bool = False) -> int:
     print(f"  File types: {dict(sorted(Counter(doc['file_type'] for doc in documents).items()))}")
     print("Embedding...")
     try:
-        model = SentenceTransformer(
-            settings.embed_model,
-            local_files_only=settings.local_files_only,
-        )
+        clear_broken_proxy_env()
+        for attempt in range(2):
+            reset_huggingface_session_if_closed()
+            try:
+                model = SentenceTransformer(
+                    settings.embed_model,
+                    local_files_only=settings.local_files_only,
+                )
+                break
+            except RuntimeError as exc:
+                if attempt == 0 and recover_closed_huggingface_session(exc):
+                    continue
+                raise
     except Exception as exc:
         print(
             "Failed to load the embedding model. "

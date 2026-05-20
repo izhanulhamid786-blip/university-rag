@@ -34,7 +34,12 @@ BLOCKED_SOURCE_PATTERNS = [
     re.compile(r"/page/page/css", re.I),
     re.compile(r"/user/register", re.I),
     re.compile(r"/user/login", re.I),
+    re.compile(r"publications\.cukashmir\.ac\.in", re.I),
     re.compile(r"/favicon", re.I),
+    re.compile(r"/citationstylelanguage/download/", re.I),
+    re.compile(r"/article/download/", re.I),
+    re.compile(r"#(?:sitenav|pkp_content_main|pkp_content_footer|homepageissue)$", re.I),
+    re.compile(r"^blob:", re.I),
     re.compile(r"[?&]name=(?:font|stylesheet)(?:&|$)", re.I),
 ]
 MIN_STRUCTURED_QUALITY_SCORE = 2
@@ -114,6 +119,7 @@ def _has_useful_structured_signal(payload: dict) -> bool:
         or payload.get("contacts")
         or payload.get("has_table")
         or payload.get("table_count")
+        or payload.get("tables")
     )
 
 
@@ -126,11 +132,14 @@ def _should_load_structured_record(payload: dict) -> bool:
     if _looks_like_error_page(title, text):
         return False
 
+    if "quality_score" not in payload:
+        return bool(_clean_text(text)) or _has_useful_structured_signal(payload)
+
     quality = int(payload.get("quality_score") or 0)
     category = payload.get("category", "general")
     if quality >= MIN_STRUCTURED_QUALITY_SCORE:
         return True
-    if category in HIGH_VALUE_CATEGORIES and _has_useful_structured_signal(payload):
+    if _has_useful_structured_signal(payload) and category in HIGH_VALUE_CATEGORIES | {"general"}:
         return True
     return False
 

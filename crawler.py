@@ -53,7 +53,7 @@ import xml.etree.ElementTree as ET
 from collections import defaultdict, deque
 from pathlib import Path
 from datetime import datetime
-from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
+from urllib.parse import parse_qsl, quote, unquote, urlencode, urljoin, urlparse, urlunparse
 
 from bs4 import BeautifulSoup, Tag as BS4Tag
 import pdfplumber
@@ -142,7 +142,10 @@ DEFAULT_CONFIG = {
         r"/signin",
         r"/user/register",
         r"/user/login",
+        r"publications\.cukashmir\.ac\.in",
         r"/citationstylelanguage/get/",
+        r"/citationstylelanguage/download/",
+        r"/article/download/",
         r"/gateway/plugin/WebFeedGatewayPlugin/",
         r"/\$\$\$call\$\$\$/page/page/css",
         r"/page/page/css",
@@ -156,6 +159,7 @@ DEFAULT_CONFIG = {
         r"\.ttf",
         r"\.mp4$",
         r"\.mp3$",
+        r"^blob:",
         r"javascript:",
         r"mailto:",
         r"tel:",
@@ -167,9 +171,48 @@ DEFAULT_CONFIG = {
         r"linkedin\.com",
         r"google\.com",
     ],
+    "blocked_fragments": [
+        "siteNav",
+        "pkp_content_main",
+        "pkp_content_footer",
+        "homepageIssue",
+        "one",
+        "two",
+        "three",
+        "four",
+        "five",
+        "six",
+        "seven",
+    ],
     "drop_low_quality_records": True,
     "min_quality_score": 2,
     "button_trigger_words": ["all", "more", "view", "show", "load", "browse", "explore", "read"],
+    "department_detail_words": [
+        "about",
+        "achievement",
+        "b. tech",
+        "b.tech",
+        "contact",
+        "course",
+        "curriculum",
+        "event",
+        "examination",
+        "faculty",
+        "history",
+        "introduction",
+        "m. tech",
+        "m.tech",
+        "nep",
+        "programme",
+        "programmes",
+        "research",
+        "scholar",
+        "semester",
+        "staff",
+        "students",
+        "study material",
+        "syllabus",
+    ],
     "category_synonyms": {
         "admissions": [
             "admission",
@@ -309,9 +352,11 @@ MAX_RETRIES = int(CONFIG["max_retries"])
 RETRY_BACKOFF_SECONDS = float(CONFIG["retry_backoff_seconds"])
 ALLOWED_DOMAINS = set(CONFIG["allowed_domains"])
 BLOCK_PATTERNS = list(CONFIG["block_patterns"])
+BLOCKED_FRAGMENTS = {str(item).lower().strip("#/") for item in CONFIG.get("blocked_fragments", [])}
 DROP_LOW_QUALITY_RECORDS = bool(CONFIG.get("drop_low_quality_records", True))
 MIN_QUALITY_SCORE = int(CONFIG.get("min_quality_score", 2))
 BUTTON_TRIGGER_WORDS = tuple(w.lower() for w in CONFIG.get("button_trigger_words", []))
+DEPARTMENT_DETAIL_WORDS = tuple(w.lower() for w in CONFIG.get("department_detail_words", []))
 CATEGORY_SYNONYMS = CONFIG["category_synonyms"]
 HIGH_VALUE_TERMS = sorted({term.lower() for terms in CATEGORY_SYNONYMS.values() for term in terms}, key=len, reverse=True)
 BASE_PARTS = urlparse(BASE_URL)
@@ -350,7 +395,7 @@ def normalise(url: str) -> str:
     p = urlparse(url)
     if p.scheme and p.scheme not in {"http", "https"}:
         return url
-    path = p.path.rstrip("/") or "/"
+    path = quote(unquote(p.path.rstrip("/") or "/"), safe="/:@")
     return urlunparse((p.scheme, p.netloc.lower(), path, "", p.query, p.fragment))
 
 
@@ -388,7 +433,7 @@ def is_crawlable_url(url: str) -> bool:
     if is_blocked(url) or not is_allowed(url):
         return False
     fragment = (urlparse(url).fragment or "").lower().strip("/")
-    if fragment in {"one", "two", "three", "four", "five", "six", "seven"}:
+    if fragment in BLOCKED_FRAGMENTS:
         return False
     return True
 
@@ -797,7 +842,8 @@ def extract_html(html: str, url: str, render_time_ms: int | None = None) -> dict
         meta_desc = (m.get("content") or "").strip()
 
     main = (
-        soup.find("main")
+        soup.find(id="print-section")
+        or soup.find("main")
         or soup.find(id=re.compile(r"^(content|main|body|wrapper)$", re.I))
         or soup.find(class_=re.compile(r"(content|main.content|entry|post.body)", re.I))
         or soup.find("article")
@@ -963,6 +1009,7 @@ class PageHandler:
             started = time.perf_counter()
             self.page.goto(url, timeout=NAV_TIMEOUT_MS, wait_until="domcontentloaded")
             self.wait_for_render()
+            self.wait_for_department_content(url)
             self.last_render_time_ms = int((time.perf_counter() - started) * 1000)
             return True
         except Exception as exc:
@@ -1003,6 +1050,26 @@ class PageHandler:
 
     def html(self) -> str:
         return self.page.content()
+
+    def wait_for_department_content(self, url: str):
+        if "departmentlist" not in (url or "").lower():
+            return
+        try:
+            self.page.wait_for_function(
+                """
+                () => {
+                    const detail = document.querySelector('#print-section');
+                    if (!detail) return false;
+                    const text = (detail.innerText || '').replace(/\\s+/g, ' ').trim();
+                    const links = detail.querySelectorAll('a[href*=".pdf"], a[href*="cukapi.disgenweb.in"]').length;
+                    return text.length > 250 || links > 0;
+                }
+                """,
+                timeout=min(RENDER_WAIT_MAX_MS + 4000, NAV_TIMEOUT_MS),
+            )
+            self.wait_for_render()
+        except Exception:
+            pass
 
     def current_url(self) -> str:
         return normalise(self.page.url)
@@ -1165,6 +1232,111 @@ class PageHandler:
         except Exception:
             pass
         return links
+
+    def harvest_department_detail(self) -> tuple[str, set[str]]:
+        current = self.current_url()
+        if "departmentlist" not in current.lower():
+            return "", set()
+
+        blocks: list[str] = []
+        links: set[str] = set()
+        seen_labels: set[str] = set()
+        seen_texts: set[str] = set()
+        selector = (
+            "main a, main button, main [role='button'], main [role='tab'], "
+            "main .nav-link, main .list-group-item, main .accordion-button, "
+            "main li, .content a, .content button, .content [role='button'], "
+            ".content [role='tab'], .content .nav-link, .content .list-group-item, "
+            ".content .accordion-button"
+        )
+
+        for _round in range(4):
+            clicked_this_round = 0
+            try:
+                controls = self.page.locator(selector)
+                count = min(controls.count(), 260)
+            except Exception:
+                break
+
+            for idx in range(count):
+                try:
+                    control = controls.nth(idx)
+                    if not control.is_visible(timeout=500):
+                        continue
+                    label = clean_text(
+                        " ".join(
+                            [
+                                control.inner_text(timeout=700) or "",
+                                control.get_attribute("aria-label", timeout=700) or "",
+                                control.get_attribute("title", timeout=700) or "",
+                            ]
+                        )
+                    )
+                    label_key = label.lower()
+                    if not label_key or len(label_key) > 120 or label_key in seen_labels:
+                        continue
+                    if not any(word in label_key for word in DEPARTMENT_DETAIL_WORDS):
+                        continue
+
+                    href = control.get_attribute("href", timeout=700)
+                    router = (
+                        control.get_attribute("routerlink", timeout=700)
+                        or control.get_attribute("routerLink", timeout=700)
+                        or control.get_attribute("ng-reflect-router-link", timeout=700)
+                    )
+                    if href or router:
+                        link = route_url(router, current) if router else normalise(urljoin(current, href))
+                        if is_crawlable_url(link):
+                            links.add(link)
+                        if link and link != current:
+                            seen_labels.add(label_key)
+                            continue
+
+                    before = self._page_signature()
+                    control.click(timeout=2500)
+                    self.wait_for_render()
+                    self.scroll_to_bottom()
+                    after_url = self.current_url()
+                    if after_url and after_url != current:
+                        if is_crawlable_url(after_url):
+                            links.add(after_url)
+                        self.page.goto(current, timeout=NAV_TIMEOUT_MS, wait_until="domcontentloaded")
+                        self.wait_for_render()
+                        seen_labels.add(label_key)
+                        continue
+
+                    text = self._main_text()
+                    text_key = hashlib.md5(text.encode("utf-8", errors="ignore")).hexdigest()
+                    if len(text) >= 80 and text_key not in seen_texts:
+                        seen_texts.add(text_key)
+                        blocks.append(f"Department detail: {label}\n{text}")
+                        links.update(self.harvest_all_links())
+                    seen_labels.add(label_key)
+                    if self._page_signature() != before:
+                        clicked_this_round += 1
+                except Exception:
+                    continue
+
+            if clicked_this_round == 0:
+                break
+
+        return "\n\n".join(blocks), links
+
+    def _main_text(self) -> str:
+        try:
+            text = self.page.evaluate(
+                """
+                () => {
+                    const clone = document.body.cloneNode(true);
+                    clone.querySelectorAll('script,style,noscript,iframe,nav,footer,header,.menu,.sidebar,.breadcrumb,.chatbot').forEach(el => el.remove());
+                    const main = clone.querySelector('main,[id*=content i],[class*=content i],article') || clone;
+                    return main.innerText || '';
+                }
+                """
+            )
+            return clean_text(text or "")
+        except Exception:
+            return ""
 
     def fetch_bytes(self, url: str) -> tuple[bytes | None, int | None]:
         headers = {
@@ -1349,6 +1521,15 @@ class UniversityCrawler:
         self._hash_store.write_text(json.dumps(self._hashes, indent=2), encoding="utf-8")
         return True
 
+    def _binary_seen(self, content: bytes) -> bool:
+        h = hashlib.md5(content).hexdigest()
+        key = f"binary-content:{h}"
+        if self._hashes.get(key) == h:
+            return True
+        self._hashes[key] = h
+        self._hash_store.write_text(json.dumps(self._hashes, indent=2), encoding="utf-8")
+        return False
+
     def _section_changes(self, url: str, record: dict) -> dict:
         current = {section["id"]: section["hash"] for section in record.get("sections", []) if section.get("id")}
         previous = self._section_hashes.get(url, {})
@@ -1362,16 +1543,38 @@ class UniversityCrawler:
         fname = safe_filename(record["url"], ".json")
         (JSON_DIR / fname).write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    def _save_html_page(self, url: str, handler: PageHandler) -> bool:
+    def _save_html_page(
+        self,
+        url: str,
+        handler: PageHandler,
+        extra_text: str = "",
+        extra_links: set[str] | None = None,
+    ) -> bool:
         html = handler.html()
         if not html:
             return False
-        if not self._changed(safe_filename(url, ".cache"), html):
+        cache_content = html + ("\n" + extra_text if extra_text else "")
+        if not self._changed(safe_filename(url, ".cache"), cache_content):
             self.stats["skipped"] += 1
             self._mark_visited(url)
             return True
 
         record = extract_html(html, url, handler.last_render_time_ms)
+        if extra_text:
+            record["text"] = clean_text(f"{record.get('text', '')}\n\n{extra_text}")
+            record["contacts"] = extract_contacts(record["text"])
+            record["category"] = categorize(url, record.get("title", ""), record["text"])
+            record["quality_score"] = quality_score(url, record["text"], record.get("title", ""))
+        if extra_links:
+            outlinks = set(record.get("outlinks") or [])
+            document_links = set(record.get("document_links") or [])
+            for link in extra_links:
+                if is_binary(link):
+                    document_links.add(link)
+                elif is_crawlable_url(link):
+                    outlinks.add(link)
+            record["outlinks"] = sorted(outlinks)
+            record["document_links"] = sorted(document_links)
         section_delta = self._section_changes(url, record)
         record.update(section_delta)
         if len(record["text"]) < 60 and not record.get("document_links"):
@@ -1423,6 +1626,10 @@ class UniversityCrawler:
             self._mark_visited(url)
             return True
         if len(content) > MAX_PDF_SIZE:
+            self.stats["skipped"] += 1
+            self._mark_visited(url)
+            return True
+        if self._binary_seen(content):
             self.stats["skipped"] += 1
             self._mark_visited(url)
             return True
@@ -1583,7 +1790,10 @@ class UniversityCrawler:
             self._schedule_retry(url, "navigation failed")
             return False
         handler.scroll_to_bottom()
-        if not self._save_html_page(url, handler):
+        detail_text, detail_links = handler.harvest_department_detail()
+        if detail_text:
+            log.info(f"[DEPARTMENT-DETAIL] captured {len(detail_text):,} chars | {url}")
+        if not self._save_html_page(url, handler, detail_text, detail_links):
             self._schedule_retry(url, "empty rendered HTML")
             return False
         for link in handler.click_expandable_buttons():

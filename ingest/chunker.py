@@ -2,6 +2,7 @@ import hashlib
 import re
 import sys
 from pathlib import Path
+from dataclasses import dataclass
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
@@ -13,18 +14,42 @@ URL_RE = re.compile(r"https?://[^\s'\"<>)]+", re.I)
 EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.I)
 PHONE_RE = re.compile(r"(?:\+91[\s-]?)?(?:\d[\s-]?){10,13}")
 TABLE_LINE_RE = re.compile(r"^\s*\|.*\|\s*$|.+\s\|\s.+|\t+")
+PAGE_BREAK_RE = re.compile(r"\n\s*--- PAGE BREAK ---\s*\n", re.I)
+SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+(?=[A-Z0-9(])")
+COURSE_CODE_RE = re.compile(r"\b[A-Z]{2,8}(?:[-\s]?[A-Z])?[-\s]?\d{2,4}[A-Z]?\b")
+SEMESTER_RE = re.compile(r"\b(?:sem(?:ester)?|batch|scheme|syllabus|programme outcome|course outcome)\b", re.I)
+NOTICE_RE = re.compile(r"\b(?:notice|notification|admission|result|date sheet|timetable|selection list|eligible list)\b", re.I)
+CONTACT_RE = re.compile(r"\b(?:email|phone|mobile|contact|faculty|staff|dean|hod|coordinator)\b", re.I)
+HEADING_RE = re.compile(
+    r"^(?:"
+    r"[A-Z][A-Za-z0-9&/().,'’\- ]{2,90}|"
+    r"\d+(?:\.\d+)*\.?\s+[A-Z][A-Za-z0-9&/().,'’\- ]{2,90}|"
+    r"(?:Chapter|Section|Unit|Module|Semester|Batch)\s+[\w .:/()-]{1,60}"
+    r")$",
+    re.I,
+)
 SIZES = {
-    "pdf": (1100, 180),
-    "docx": (900, 140),
-    "html": (850, 140),
-    "htm": (850, 140),
-    "csv": (700, 90),
-    "xlsx": (700, 90),
-    "txt": (850, 120),
-    "md": (850, 120),
-    "json": (650, 80),
+    "pdf": (1250, 220),
+    "docx": (1050, 180),
+    "html": (1050, 180),
+    "htm": (1050, 180),
+    "csv": (850, 120),
+    "xlsx": (850, 120),
+    "txt": (1000, 160),
+    "md": (1000, 160),
+    "json": (800, 120),
 }
 SEPARATORS = ["\n\n\n", "\n\n", "\n", ". ", "! ", "? ", " ", ""]
+MIN_CHUNK_LEN = 120
+MAX_HEADING_CONTEXT = 4
+
+
+@dataclass
+class SemanticUnit:
+    text: str
+    kind: str = "paragraph"
+    heading_path: tuple[str, ...] = ()
+    priority: int = 0
 
 
 def _splitter(file_type: str) -> RecursiveCharacterTextSplitter:
@@ -36,7 +61,7 @@ def _splitter(file_type: str) -> RecursiveCharacterTextSplitter:
     )
 
 
-def _merge_tiny(parts: list[str], min_len: int = 80) -> list[str]:
+def _merge_tiny(parts: list[str], min_len: int = MIN_CHUNK_LEN) -> list[str]:
     merged = []
     for part in parts:
         clean = part.strip()
@@ -47,6 +72,246 @@ def _merge_tiny(parts: list[str], min_len: int = 80) -> list[str]:
         else:
             merged.append(clean)
     return merged
+
+
+def _clean_lines(text: str) -> list[str]:
+    lines = []
+    for raw in PAGE_BREAK_RE.sub("\n--- PAGE BREAK ---\n", text or "").splitlines():
+        line = re.sub(r"[ \t]+", " ", raw).strip()
+        if line:
+            lines.append(line)
+    return lines
+
+
+def _is_heading(line: str, next_line: str = "") -> bool:
+    line = line.strip(" :-")
+    if len(line) < 3 or len(line) > 120:
+        return False
+    if TABLE_LINE_RE.search(line) or EMAIL_RE.search(line) or URL_RE.search(line):
+        return False
+    if line.endswith(".") and len(line.split()) > 6:
+        return False
+    if SEMESTER_RE.search(line) and len(line.split()) <= 10:
+        return True
+    if line.isupper() and 2 <= len(line.split()) <= 12:
+        return True
+    if HEADING_RE.match(line) and (not next_line or not line.endswith(",")):
+        return True
+    return False
+
+
+def _kind_for(text: str) -> str:
+    if _table_row_count(text):
+        return "table"
+    if COURSE_CODE_RE.search(text) or SEMESTER_RE.search(text):
+        return "syllabus"
+    if CONTACT_RE.search(text) or EMAIL_RE.search(text) or PHONE_RE.search(text):
+        return "contact"
+    if NOTICE_RE.search(text):
+        return "notice"
+    return "paragraph"
+
+
+def _priority_for(kind: str, text: str) -> int:
+    score = 0
+    if kind in {"table", "syllabus", "contact", "notice"}:
+        score += 2
+    if URL_RE.search(text) or EMAIL_RE.search(text) or PHONE_RE.search(text):
+        score += 1
+    if COURSE_CODE_RE.search(text):
+        score += 1
+    return score
+
+
+def _semantic_units(text: str) -> list[SemanticUnit]:
+    lines = _clean_lines(text)
+    units: list[SemanticUnit] = []
+    headings: list[str] = []
+    buffer: list[str] = []
+
+    def flush(kind: str | None = None):
+        nonlocal buffer
+        if not buffer:
+            return
+        block = "\n".join(buffer).strip()
+        buffer = []
+        if not block:
+            return
+        detected = kind or _kind_for(block)
+        units.append(
+            SemanticUnit(
+                text=block,
+                kind=detected,
+                heading_path=tuple(headings[-MAX_HEADING_CONTEXT:]),
+                priority=_priority_for(detected, block),
+            )
+        )
+
+    for idx, line in enumerate(lines):
+        if line == "--- PAGE BREAK ---":
+            flush()
+            if headings and not headings[-1].lower().startswith("page break"):
+                headings = headings[:1]
+            continue
+
+        next_line = lines[idx + 1] if idx + 1 < len(lines) else ""
+        if _is_heading(line, next_line):
+            flush()
+            heading = line.strip()
+            if heading not in headings:
+                if len(heading.split()) <= 3 and headings:
+                    headings = headings[:1] + [heading]
+                else:
+                    headings.append(heading)
+            continue
+
+        if TABLE_LINE_RE.search(line):
+            if buffer and _kind_for("\n".join(buffer)) != "table":
+                flush()
+            buffer.append(line)
+            continue
+
+        current_kind = _kind_for("\n".join(buffer)) if buffer else ""
+        line_kind = _kind_for(line)
+        if buffer and current_kind in {"table", "syllabus", "contact"} and line_kind != current_kind:
+            flush(current_kind)
+        buffer.append(line)
+
+    flush()
+    return _merge_related_units(units)
+
+
+def _merge_related_units(units: list[SemanticUnit]) -> list[SemanticUnit]:
+    merged: list[SemanticUnit] = []
+    for unit in units:
+        if not unit.text.strip():
+            continue
+        if (
+            merged
+            and len(unit.text) < 90
+            and unit.kind == merged[-1].kind
+            and unit.heading_path == merged[-1].heading_path
+        ):
+            previous = merged[-1]
+            text = f"{previous.text}\n{unit.text}".strip()
+            merged[-1] = SemanticUnit(
+                text=text,
+                kind=previous.kind,
+                heading_path=previous.heading_path,
+                priority=max(previous.priority, unit.priority),
+            )
+        else:
+            merged.append(unit)
+    return merged
+
+
+def _unit_text(unit: SemanticUnit) -> str:
+    heading = " > ".join(unit.heading_path)
+    if heading and heading.lower() not in unit.text[:200].lower():
+        return f"Section: {heading}\n{unit.text}"
+    return unit.text
+
+
+def _tail_overlap(text: str, target_chars: int) -> str:
+    if len(text) <= target_chars:
+        return text
+    sentences = SENTENCE_SPLIT_RE.split(text.replace("\n", " "))
+    tail = []
+    total = 0
+    for sentence in reversed(sentences):
+        sentence = sentence.strip()
+        if not sentence:
+            continue
+        tail.append(sentence)
+        total += len(sentence) + 1
+        if total >= target_chars:
+            break
+    if tail:
+        return " ".join(reversed(tail))[-target_chars:].strip()
+    return text[-target_chars:].strip()
+
+
+def _split_large_unit(unit: SemanticUnit, file_type: str) -> list[SemanticUnit]:
+    chunk_size, _ = SIZES.get(file_type, (1000, 160))
+    if len(unit.text) <= chunk_size * 1.25:
+        return [unit]
+
+    if unit.kind == "table":
+        lines = unit.text.splitlines()
+        pieces = []
+        current = []
+        for line in lines:
+            if current and sum(len(x) + 1 for x in current) + len(line) > chunk_size:
+                pieces.append("\n".join(current))
+                current = current[:1] if current else []
+            current.append(line)
+        if current:
+            pieces.append("\n".join(current))
+    else:
+        pieces = _splitter(file_type).split_text(unit.text)
+
+    return [
+        SemanticUnit(
+            text=piece.strip(),
+            kind=unit.kind,
+            heading_path=unit.heading_path,
+            priority=unit.priority,
+        )
+        for piece in pieces
+        if piece.strip()
+    ]
+
+
+def _pack_semantic_chunks(units: list[SemanticUnit], file_type: str) -> list[str]:
+    chunk_size, chunk_overlap = SIZES.get(file_type, (1000, 160))
+    expanded: list[SemanticUnit] = []
+    for unit in units:
+        expanded.extend(_split_large_unit(unit, file_type))
+
+    chunks: list[str] = []
+    current: list[str] = []
+    current_len = 0
+    current_kind = ""
+
+    def flush():
+        nonlocal current, current_len, current_kind
+        if not current:
+            return
+        chunks.append("\n\n".join(current).strip())
+        current = []
+        current_len = 0
+        current_kind = ""
+
+    for unit in expanded:
+        text = _unit_text(unit)
+        unit_len = len(text)
+        hard_boundary = (
+            current
+            and unit.priority >= 2
+            and current_kind
+            and unit.kind != current_kind
+            and current_len >= MIN_CHUNK_LEN
+        )
+        if current and (current_len + unit_len + 2 > chunk_size or hard_boundary):
+            previous = "\n\n".join(current).strip()
+            flush()
+            overlap = _tail_overlap(previous, chunk_overlap)
+            if overlap and unit.kind not in {"table", "contact"}:
+                current.append(f"Context from previous chunk:\n{overlap}")
+                current_len = len(current[0])
+        current.append(text)
+        current_len += unit_len + 2
+        current_kind = current_kind or unit.kind
+
+    flush()
+    return _merge_tiny(chunks)
+
+
+def _semantic_split(text: str, file_type: str) -> list[str]:
+    units = _semantic_units(text)
+    if not units:
+        return _merge_tiny(_splitter(file_type).split_text(text))
+    return _pack_semantic_chunks(units, file_type)
 
 
 def _chunk_links(text: str, doc_links: list[dict]) -> list[dict]:
@@ -94,6 +359,8 @@ def _format_chunk_text(doc: dict, part: str) -> str:
         header.append(f"URL: {doc['source_url']}")
     if doc.get("file_type"):
         header.append(f"Type: {doc['file_type']}")
+    if doc.get("source_kind"):
+        header.append(f"Source kind: {doc['source_kind']}")
 
     prefix = "\n".join(header).strip()
     if prefix:
@@ -108,12 +375,13 @@ def chunk(documents: list[dict]) -> list[dict]:
         if not text:
             continue
 
-        parts = _merge_tiny(_splitter(doc.get("file_type", "txt")).split_text(text))
+        parts = _semantic_split(text, doc.get("file_type", "txt"))
         for index, part in enumerate(parts):
             chunk_links = _chunk_links(part, doc.get("links", []))
             chunk_text = _format_chunk_text(doc, part)
             table_rows = _table_row_count(part)
             contact_fields = _contact_field_count(part)
+            semantic_kind = _kind_for(part)
             chunk_id = hashlib.md5(
                 f"{doc['doc_id']}::{index}::{part[:120]}".encode("utf-8", errors="ignore")
             ).hexdigest()
@@ -132,6 +400,8 @@ def chunk(documents: list[dict]) -> list[dict]:
                     "source_kind": doc.get("source_kind", "crawler"),
                     "chunk_index": index,
                     "chunk_total": len(parts),
+                    "chunk_strategy": "semantic",
+                    "semantic_kind": semantic_kind,
                     "has_links": bool(chunk_links),
                     "links": chunk_links,
                     "scraped_at": doc.get("scraped_at"),

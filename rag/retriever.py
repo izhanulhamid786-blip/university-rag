@@ -2,6 +2,7 @@ import json
 import logging
 import re
 import sys
+import textwrap
 from contextlib import contextmanager
 from functools import lru_cache
 from pathlib import Path
@@ -15,6 +16,11 @@ if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from rag.settings import get_settings
+from rag.model_loading import (
+    clear_broken_proxy_env,
+    recover_closed_huggingface_session,
+    reset_huggingface_session_if_closed,
+)
 
 
 log = logging.getLogger(__name__)
@@ -312,11 +318,21 @@ def quiet_transformer_loading():
 @lru_cache(maxsize=1)
 def _embedder() -> SentenceTransformer:
     settings = get_settings()
-    with quiet_transformer_loading():
-        return SentenceTransformer(
-            settings.embed_model,
-            local_files_only=settings.local_files_only,
-        )
+    clear_broken_proxy_env()
+    for attempt in range(2):
+        reset_huggingface_session_if_closed()
+        try:
+            with quiet_transformer_loading():
+                return SentenceTransformer(
+                    settings.embed_model,
+                    local_files_only=settings.local_files_only,
+                )
+        except RuntimeError as exc:
+            if attempt == 0 and recover_closed_huggingface_session(exc):
+                continue
+            raise
+
+    raise RuntimeError("Failed to load embedding model.")
 
 
 def preload_embedder() -> None:
@@ -808,7 +824,7 @@ def _bm25_search(query: str, k: int) -> list[dict]:
 def hybrid_retrieve(query: str, k: int | None = None) -> list[dict]:
     settings = get_settings()
     limit = k or settings.retrieval_k
-    candidate_limit = max(limit * 4, 20)
+    candidate_limit = max(limit * 3, 8)
     if not query.strip():
         return []
 
@@ -913,12 +929,50 @@ def retrieve_links(query: str, k: int = 10) -> list[str]:
     return urls[:k]
 
 
+DEBUG_RESULT_LIMIT = 3
+DEBUG_PREVIEW_CHARS = 450
+
+
+def _debug_preview(text: str, limit: int = DEBUG_PREVIEW_CHARS) -> str:
+    compact = re.sub(r"\s+", " ", (text or "")).strip()
+    if len(compact) <= limit:
+        return compact
+    return compact[: limit - 3].rstrip() + "..."
+
+
+def _debug_indent(text: str, *, width: int = 120, indent: str = "    ") -> str:
+    return textwrap.fill(
+        text,
+        width=width,
+        initial_indent=indent,
+        subsequent_indent=indent,
+        break_long_words=False,
+        break_on_hyphens=False,
+    )
+
+
+def _debug_print_result(index: int, result: dict, *, preview_chars: int = DEBUG_PREVIEW_CHARS) -> None:
+    matched_by = ", ".join(result.get("matched_by", [])) or "unknown"
+    preview = _debug_indent(_debug_preview(result.get("text", ""), preview_chars))
+    print(
+        f"\n[{index}] {result.get('title', 'Untitled')}\n"
+        f"    Category: {result.get('category', 'general')}\n"
+        f"    Score: {result.get('final_score', result.get('rrf_score', 0.0)):.4f}\n"
+        f"    Matched by: {matched_by}\n"
+        f"    URL: {result.get('source_url') or 'N/A'}\n"
+        f"    Source kind: {result.get('source_kind', 'unknown')}\n"
+        f"    Preview:\n"
+        f"{preview}"
+    )
+
+
 if __name__ == "__main__":
-    query = "admission process central university kashmir"
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+
+    query = " ".join(sys.argv[1:]).strip() or "admission process central university kashmir"
+
     results = hybrid_retrieve(query)
-    print(f"\nTop {min(3, len(results))} results for '{query}':")
-    for index, result in enumerate(results[:3], start=1):
-        print(f"\n[{index}] {result.get('title', 'Untitled')} | score={result['rrf_score']:.4f}")
-        print(f"     {result['text'][:180]}...")
-        if result.get("source_url"):
-            print(f"     URL: {result['source_url']}")
+    print(f"\nTop {min(DEBUG_RESULT_LIMIT, len(results))} retrieved results for: {query!r}")
+    for index, result in enumerate(results[:DEBUG_RESULT_LIMIT], start=1):
+        _debug_print_result(index, result)

@@ -5,12 +5,10 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from google.genai.errors import ClientError
-
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from rag.llm import LLMConfigurationError, get_genai_client
+from rag.llm import OllamaConnectionError, ollama_generate
 from rag.memory import rewrite_query
 from rag.prompt import build_prompt
 from rag.reranker import preload_reranker, rerank
@@ -48,13 +46,6 @@ EXACT_LOOKUP_WORDS = {
     "a",
     "an",
 }
-EMERGENCY_GENERATOR_MODELS = (
-    "gemini-2.5-flash-lite",
-    "gemini-flash-latest",
-    "gemini-3-flash-preview",
-)
-
-
 @dataclass
 class TextChunk:
     text: str
@@ -80,46 +71,29 @@ def _snippet(text: str, limit: int = 240) -> str:
 
 def _local_fallback_answer(query: str, chunks: list[dict], *, quota_hit: bool = False) -> str:
     lines = []
-    if quota_hit:
-        lines.append(
-            "Gemini quota is exhausted right now, so here is a retrieval-only answer from the indexed documents."
-        )
-    else:
-        lines.append(
-            "The generation service is unavailable right now, so here is the best answer I can assemble from the indexed documents."
-        )
+    lines.append(
+        "**Answer quality note**\n"
+        "The local answer generator is unavailable right now, so this is a concise evidence summary from the indexed documents."
+    )
 
     if query:
-        lines.append(f"Question: {query}")
+        lines.append(f"**Question**\n{query}")
 
     if not chunks:
         lines.append("I couldn't find enough supporting documents to answer confidently.")
         return "\n\n".join(lines)
 
-    lines.append("Most relevant documents:")
+    lines.append("**Most relevant official material**")
     for index, chunk in enumerate(chunks[:3], start=1):
         title = chunk.get("title") or f"Source {index}"
         category = chunk.get("category", "general")
         body = _snippet(_chunk_body(chunk))
-        lines.append(f"[{index}] {title} ({category})")
+        lines.append(f"- [{index}] **{title}** ({category})")
         if body:
-            lines.append(body)
+            lines.append(f"  {body}")
 
-    lines.append("Open the source links below for the exact official notices and PDFs.")
+    lines.append("**Recommended next step**\nOpen the evidence cards below for the exact official notices and PDFs.")
     return "\n\n".join(lines)
-
-
-def _generation_models() -> list[str]:
-    settings = get_settings()
-    models = []
-    for model_name in (
-        settings.generator_model,
-        settings.fallback_generator_model,
-        *EMERGENCY_GENERATOR_MODELS,
-    ):
-        if model_name and model_name not in models:
-            models.append(model_name)
-    return models
 
 
 def _query_tokens(query: str) -> list[str]:
@@ -164,66 +138,16 @@ def warmup_local_models() -> None:
             log.warning("Warmup failed for %s: %s", label, exc)
 
 
-def _is_quota_error(exc: Exception) -> bool:
-    if isinstance(exc, ClientError):
-        code = getattr(exc, "status_code", None)
-        if code is None:
-            code = getattr(exc, "code", None)
-        if code == 429:
-            return True
-    message = str(exc).lower()
-    return "429" in message or "resource_exhausted" in message or "quota" in message
-
-
-def _is_temporary_model_error(exc: Exception) -> bool:
-    code = getattr(exc, "status_code", None)
-    if code is None:
-        code = getattr(exc, "code", None)
-    if code in {429, 503}:
-        return True
-
-    message = str(exc).lower()
-    return (
-        _is_quota_error(exc)
-        or "503" in message
-        or "unavailable" in message
-        or "high demand" in message
-    )
-
-
 def _generation_stream(prompt: str, *, query: str, fallback_chunks: list[dict]):
+    settings = get_settings()
     try:
-        client = get_genai_client(required=True)
-        last_error = None
-        for model_name in _generation_models():
-            try:
-                log.info("Generating with model: %s", model_name)
-                for item in client.models.generate_content_stream(
-                    model=model_name,
-                    contents=prompt,
-                ):
-                    yield item
-                return
-            except Exception as exc:
-                last_error = exc
-                if _is_temporary_model_error(exc):
-                    log.warning("Generation unavailable for model %s: %s", model_name, exc)
-                    continue
-                raise
-        if last_error is not None:
-            raise last_error
-    except LLMConfigurationError as exc:
-        log.warning("Generator configuration issue: %s", exc)
-        yield TextChunk(str(exc))
-    except Exception as exc:
-        log.warning("Generation failed; using local fallback: %s", exc)
-        yield TextChunk(
-            _local_fallback_answer(
-                query,
-                fallback_chunks,
-                quota_hit=_is_quota_error(exc),
-            )
-        )
+        log.info("Generating with Ollama model: %s", settings.generator_model)
+        for text in ollama_generate(prompt, stream=True):
+            yield TextChunk(text)
+        return
+    except OllamaConnectionError as exc:
+        log.warning("Ollama generation failed; using local fallback: %s", exc)
+        yield TextChunk(_local_fallback_answer(query, fallback_chunks))
 
 
 def _build_sources(chunks: list[dict]) -> list[dict]:
@@ -254,7 +178,9 @@ def app_status() -> dict:
     settings = get_settings()
     kb = collection_status()
     return {
-        "generator_configured": bool(settings.google_api_key),
+        "generator_configured": settings.generator_provider == "ollama",
+        "generator_provider": settings.generator_provider,
+        "generator_model": settings.generator_model,
         "knowledge_base_ready": kb["ready"],
         "collection_name": kb["collection_name"],
         "chunk_count": kb["count"],
@@ -310,6 +236,16 @@ def run_with_metadata(
     sources = _build_sources(top_chunks)
     prompt = build_prompt(smart_query, top_chunks, history, answer_style=answer_style)
     after_prompt = time.perf_counter()
+    metadata["retrieved_contexts"] = [_chunk_body(chunk) for chunk in top_chunks]
+    metadata["retrieved_context_sources"] = [
+        {
+            "title": chunk.get("title") or "Untitled",
+            "url": chunk.get("source_url"),
+            "path": chunk.get("source_path"),
+            "category": chunk.get("category", "general"),
+        }
+        for chunk in top_chunks
+    ]
     metadata["timings_ms"] = {
         "rewrite": round((after_rewrite - started) * 1000, 1),
         "retrieve": round((after_retrieve - after_rewrite) * 1000, 1),
@@ -344,7 +280,12 @@ if __name__ == "__main__":
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
 
-    stream, sources = run("What is the admission process at CUK?", [])
+    query = " ".join(sys.argv[1:]).strip()
+    if not query and sys.stdin.isatty():
+        query = input("Question: ").strip()
+    query = query or "What is the admission process at CUK?"
+
+    stream, sources = run(query, [])
     for item in stream:
         if getattr(item, "text", ""):
             print(item.text, end="", flush=True)
