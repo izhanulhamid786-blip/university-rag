@@ -1,0 +1,16 @@
+{
+  "api_url": "https://cukapi.disgenweb.in/administrative/getbreadcum",
+  "source_page": "https://www.cukashmir.ac.in/#/administration;id=4A25FFFB-0396-4695-93D9-534D08A70C31",
+  "payload": [
+    {
+      "ParentMasterId": "8D88A194-185F-4A0C-AD4C-C724C47C539C",
+      "MasterId": "4A25FFFB-0396-4695-93D9-534D08A70C31",
+      "Name": "Academics Section"
+    },
+    {
+      "ParentMasterId": null,
+      "MasterId": "8D88A194-185F-4A0C-AD4C-C724C47C539C",
+      "Name": "Administrative Sections"
+    }
+  ]
+}

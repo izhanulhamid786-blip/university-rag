@@ -1,4 +1,5 @@
 import logging
+import math
 import re
 import sys
 import textwrap
@@ -236,6 +237,12 @@ def _retrieval_prior(query: str, chunk: dict) -> float:
     return prior + exact_prior
 
 
+def _sigmoid(x: float) -> float:
+    # Safely calculate sigmoid to prevent overflow
+    if x < -20: return 0.0
+    if x > 20: return 1.0
+    return 1 / (1 + math.exp(-x))
+
 def rerank(query: str, chunks: list[dict], top_k: int | None = None) -> list[dict]:
     settings = get_settings()
     limit = top_k or settings.rerank_top_k
@@ -251,26 +258,34 @@ def rerank(query: str, chunks: list[dict], top_k: int | None = None) -> list[dic
         log.warning("Reranker unavailable, falling back to retrieval order: %s", exc)
         return chunks[:limit]
 
+    scaled_scores = [_sigmoid(float(s)) for s in scores]
+    combined = [(chunk, scaled) for chunk, scaled in zip(chunks, scaled_scores)]
+
     ranked = sorted(
-        zip(chunks, scores),
-        key=lambda item: float(item[1]) + _retrieval_prior(query, item[0]),
+        combined,
+        key=lambda item: float(item[1]) + _retrieval_prior(query, item[0]) * 0.15,
         reverse=True,
     )
-    filtered = [item for item in ranked if float(item[1]) + _retrieval_prior(query, item[0]) >= MIN_RERANK_SCORE]
-    if filtered:
-        ranked = filtered
-    else:
-        log.info(
-            "All rerank scores fell below %.2f for query %r; using relative rerank order as fallback.",
-            MIN_RERANK_SCORE,
-            query,
-        )
+    
+    # Contextual Pruning based on relative threshold
+    # Use a wide gap (0.85) and low floor (0.01) to avoid dropping relevant chunks.
+    # Always keep at least `limit` items so the LLM has enough context.
+    if ranked:
+        top_score = float(ranked[0][1]) + _retrieval_prior(query, ranked[0][0]) * 0.15
+        pruning_threshold = max(0.01, top_score - 0.85)
+        filtered = [item for item in ranked if float(item[1]) + _retrieval_prior(query, item[0]) * 0.15 >= pruning_threshold]
+        # Never prune below the requested limit - always give LLM enough context
+        if len(filtered) >= limit:
+            ranked = filtered
+        else:
+            # Keep at least `limit` items even if some are below threshold
+            ranked = ranked[:max(limit, len(filtered))]
 
     results = []
-    for chunk, score in ranked[:limit]:
+    for chunk, scaled_score in ranked[:limit]:
         item = dict(chunk)
-        item["rerank_score"] = float(score)
-        item["rerank_final_score"] = float(score) + _retrieval_prior(query, chunk)
+        item["rerank_score"] = float(scaled_score)
+        item["rerank_final_score"] = float(scaled_score) + _retrieval_prior(query, chunk) * 0.15
         results.append(item)
     return results
 

@@ -1,0 +1,16 @@
+{
+  "api_url": "https://cukapi.disgenweb.in/department/getbreadcum",
+  "source_page": "https://cukashmir.ac.in/#/departmentList;id=E56E48B9-21C9-453B-86E2-3977333D4091;menuid=90BC6C77-58F4-4E53-8D0B-A164B6FFBFBF",
+  "payload": [
+    {
+      "ParentMasterId": "E56E48B9-21C9-453B-86E2-3977333D4091",
+      "MasterId": "90BC6C77-58F4-4E53-8D0B-A164B6FFBFBF",
+      "Name": "List of Admitted Students"
+    },
+    {
+      "ParentMasterId": null,
+      "MasterId": "E56E48B9-21C9-453B-86E2-3977333D4091",
+      "Name": "Department of Education"
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "api_url": "https://cukapi.disgenweb.in/headercategory/headercategoryListById",
+  "source_page": "https://www.cukashmir.ac.in/#/departlist;id=BF4D3B56-C4BD-4F31-B0FE-B2A199D7FAC0",
+  "payload": [
+    {
+      "HeaderCategoryMasterId": "BF4D3B56-C4BD-4F31-B0FE-B2A199D7FAC0",
+      "ParentHeaderCategoryMasterId": "714D11EC-60FD-4252-9844-053C5F68BEB2",
+      "IsHasLeftSectionSubMenus": false,
+      "IsExternalLink": true,
+      "IsActive": true,
+      "ExternalLinkUrl": "",
+      "Order": -7,
+      "CreatedOn": "2026-05-15T21:22:50.933Z",
+      "CreatedBy": 1,
+      "UpdatedOn": "2026-05-18T10:48:03.457Z",
+      "UpdatedBy": 1,
+      "HeaderCategoryId": "7766D350-0935-4EE5-8637-585FDA5A4765",
+      "LangType": 1,
+      "HeaderCategoryName": "CCMT -2026",
+      "HeaderCategoryTitle": "CCMT -2026",
+      "HeaderCategoryDescription": "<p><b>CCMT -2026 For M.Tech</b></p><p>This is for the information of all those aspirants who are interested in seeking admission to M.Tech. (Structural Engineering) &amp; M.Tech. (Artificial Intelligence &amp; Machine Learning) at Central University of Kashmir that the admission to these programmes shall be offered through CCMT-2026.</p><hr><p><b>Notifications(Latest First):</b></p><ol><li><a href=\"https://cukapi.disgenweb.in/p/upload/1778860354357-CCMT Registration Schedule.pdf\" target=\"_blank\">CCMT Registration Schedule</a></li><li><a href=\"https://cukapi.disgenweb.in/p/admission/1778859925678-Admission_Notification_M.Tech_Structural_Engineering__M.Tech__AI___ML_2026.pdf\" target=\"_blank\">Admission Notification for M.Tech. (Structural Engineering) &amp; M.Tech. (Artificial Intelligence &amp; Machine Learning)</a></li></ol>",
+      "IconPath": "CUKLogo.png",
+      "FavIcon": null,
+      "SubChildCount": 0
+    }
+  ]
+}

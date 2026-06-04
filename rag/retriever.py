@@ -429,7 +429,13 @@ def _needs_multi_chunk_evidence(query_tokens: set[str]) -> bool:
     return (
         _is_form_number_intent(query_tokens)
         or _is_selection_intent(query_tokens)
-        or bool(query_tokens & {"all", "every", "full", "complete", "table", "tables"})
+        or _is_count_intent(query_tokens)
+        or bool(query_tokens & {
+            "all", "every", "full", "complete", "table", "tables",
+            "list", "departments", "courses", "programmes", "programs",
+            "syllabus", "curriculum", "subjects", "papers",
+            "faculty", "members", "teachers", "staff",
+        })
     )
 
 
@@ -550,6 +556,9 @@ def _source_key(item: dict) -> str:
     source_url = _canonical_url(item.get("source_url"))
     if source_url:
         return source_url
+    source_path = item.get("source_path")
+    if source_path:
+        return str(source_path).strip().lower()
     title = (item.get("title") or "").strip().lower()
     category = (item.get("category") or "").strip().lower()
     text = (item.get("text") or "").strip().lower()[:160]
@@ -667,6 +676,12 @@ def _heuristic_score(item: dict, query_tokens: set[str], intent_categories: set[
 
     score += _metadata_overlap_score(item, query_tokens)
     score += _entity_match_score(item, query_tokens)
+    
+    # Exact substring match boost for entity queries (like names)
+    if len(query_tokens) >= 2:
+        exact_query = " ".join(query_tokens).lower()
+        if len(exact_query) > 5 and exact_query in text:
+            score += 2.0
 
     if intent_categories:
         if category in intent_categories:
@@ -823,8 +838,8 @@ def _bm25_search(query: str, k: int) -> list[dict]:
 
 def hybrid_retrieve(query: str, k: int | None = None) -> list[dict]:
     settings = get_settings()
-    limit = k or settings.retrieval_k
-    candidate_limit = max(limit * 3, 8)
+    limit = k or settings.rerank_candidate_k
+    candidate_limit = max(limit * 3, 20)
     if not query.strip():
         return []
 
@@ -838,6 +853,17 @@ def hybrid_retrieve(query: str, k: int | None = None) -> list[dict]:
     link_intent = _is_link_intent(query)
     query_tokens = set(_significant_query_tokens(query))
     intent_categories = _intent_categories(query_tokens)
+    
+    # Extract min and max for scaling
+    dense_scores = [item.get("dense_score", 0.0) for item in dense]
+    sparse_scores = [item.get("bm25_score", 0.0) for item in sparse]
+    
+    dense_min, dense_max = min(dense_scores) if dense_scores else 0.0, max(dense_scores) if dense_scores else 1.0
+    sparse_min, sparse_max = min(sparse_scores) if sparse_scores else 0.0, max(sparse_scores) if sparse_scores else 1.0
+    
+    dense_range = (dense_max - dense_min) or 1.0
+    sparse_range = (sparse_max - sparse_min) or 1.0
+
     for source_name, results in (("dense", dense), ("bm25", sparse)):
         for rank, item in enumerate(results, start=1):
             chunk_id = item["chunk_id"]
@@ -845,46 +871,47 @@ def hybrid_retrieve(query: str, k: int | None = None) -> list[dict]:
             if current is None:
                 current = {
                     **item,
-                    "rrf_score": 0.0,
+                    "cc_score": 0.0,
                     "dense_score": item.get("dense_score", 0.0),
                     "bm25_score": item.get("bm25_score", 0.0),
+                    "matched_by": [],
                 }
                 merged[chunk_id] = current
             else:
                 current["dense_score"] = max(current.get("dense_score", 0.0), item.get("dense_score", 0.0))
                 current["bm25_score"] = max(current.get("bm25_score", 0.0), item.get("bm25_score", 0.0))
 
-            current["rrf_score"] += 1.0 / (RRF_K + rank)
             current["matched_by"] = sorted(set(current.get("matched_by", [])) | {source_name})
 
+    alpha = 0.75 # 75% dense weight, 25% sparse weight
     ranked = list(merged.values())
     for item in ranked:
+        n_dense = max(0.0, (item["dense_score"] - dense_min) / dense_range)
+        n_sparse = max(0.0, (item["bm25_score"] - sparse_min) / sparse_range)
+        
+        item["cc_score"] = (alpha * n_dense) + ((1 - alpha) * n_sparse)
+        
         if link_intent and item.get("has_links"):
-            item["rrf_score"] += 0.02
+            item["cc_score"] += 0.02
         item["heuristic_score"] = _heuristic_score(item, query_tokens, intent_categories)
-        item["final_score"] = item["rrf_score"] + item["heuristic_score"]
+        item["final_score"] = item["cc_score"] + item["heuristic_score"]
+        item["rrf_score"] = item["cc_score"] # fallback for compatibility
 
     if not _needs_multi_chunk_evidence(query_tokens):
-        deduped = {}
-        for item in ranked:
+        # Allow up to 3 chunks per source to preserve multi-section relevance
+        source_counts: dict[str, int] = {}
+        deduped_list = []
+        for item in sorted(ranked, key=lambda x: x.get("final_score", 0), reverse=True):
             key = _source_key(item)
-            current = deduped.get(key)
-            if current is None:
-                deduped[key] = item
-                continue
-            if (
-                item["final_score"] > current["final_score"]
-                or (
-                    item["final_score"] == current["final_score"]
-                    and item.get("chunk_index", 0) < current.get("chunk_index", 0)
-                )
-            ):
-                deduped[key] = item
+            count = source_counts.get(key, 0)
+            if count < 3:
+                deduped_list.append(item)
+                source_counts[key] = count + 1
 
-        ranked = list(deduped.values())
+        ranked = deduped_list
     ranked.sort(
         key=lambda item: (
-            item.get("final_score", item["rrf_score"]),
+            item.get("final_score", item["cc_score"]),
             item.get("dense_score", 0.0),
             item.get("bm25_score", 0.0),
         ),

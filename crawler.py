@@ -336,6 +336,8 @@ CONFIG = load_config()
 
 BASE_URL = CONFIG["base_url"].rstrip("/")
 START_URLS = [normalised if (normalised := urljoin(BASE_URL + "/", p.lstrip("/"))) else BASE_URL for p in CONFIG["start_paths"]]
+
+
 OUTPUT_DIR = Path(CONFIG["output_dir"])
 PDF_DIR = OUTPUT_DIR / "pdfs"
 JSON_DIR = OUTPUT_DIR / "structured"
@@ -398,6 +400,12 @@ def normalise(url: str) -> str:
     path = quote(unquote(p.path.rstrip("/") or "/"), safe="/:@")
     return urlunparse((p.scheme, p.netloc.lower(), path, "", p.query, p.fragment))
 
+_seed_file = Path("manual_seeds.txt")
+if _seed_file.exists():
+    for _line in _seed_file.read_text(encoding="utf-8").splitlines():
+        _line = _line.strip()
+        if _line and not _line.startswith("#"):
+            START_URLS.append(normalise(_line))
 
 def route_url(route: str, current_url: str | None = None) -> str:
     route = (route or "").strip().strip("'\"")

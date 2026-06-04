@@ -1,0 +1,26 @@
+{
+  "api_url": "https://cukapi.disgenweb.in/administrative/administrativeListById",
+  "source_page": "https://www.cukashmir.ac.in/#/administration;id=4A25FFFB-0396-4695-93D9-534D08A70C31;menuid=E56C9EC3-E8BD-4DF5-AAFF-C79C7C71E593",
+  "payload": [
+    {
+      "AdministrativeMasterId": "E56C9EC3-E8BD-4DF5-AAFF-C79C7C71E593",
+      "ParentAdministrativeMasterId": "4A25FFFB-0396-4695-93D9-534D08A70C31",
+      "IsHasLeftSectionSubMenus": true,
+      "IsExternalLink": true,
+      "IsActive": true,
+      "ExternalLinkUrl": "",
+      "Order": 8,
+      "CreatedOn": "2020-09-10T14:26:23.693Z",
+      "CreatedBy": 1,
+      "UpdatedOn": "2023-02-11T11:55:53.393Z",
+      "UpdatedBy": 1,
+      "AdministrativeId": "CBB2B3DA-E257-4F35-86CC-B1D469267DE1",
+      "LangType": 1,
+      "IconPath": null,
+      "AdministrativeName": "Photo Gallery",
+      "AdministrativeTitle": "Photo Gallery",
+      "AdministrativeDescription": "",
+      "SubChildCount": 0
+    }
+  ]
+}

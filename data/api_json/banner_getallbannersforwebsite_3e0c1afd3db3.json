@@ -1,0 +1,150 @@
+{
+  "api_url": "https://cukapi.disgenweb.in/banner/getallbannersforwebsite",
+  "source_page": "https://cukashmir.ac.in/#/publiczone",
+  "payload": [
+    {
+      "Id": 292,
+      "Name": "bannerSeminarComp.png",
+      "PhotoUrl": "https://cukapi.disgenweb.in/p/banner/1778836699361-bannerSeminarComp.png",
+      "CreateDate": "2026-05-15T14:48:00.000Z",
+      "Active": true,
+      "Create_by": 0,
+      "Height": 500,
+      "Width": 2048,
+      "Size_Kb": 349563,
+      "Order": -4,
+      "approve": null,
+      "ApprovedBy": 1,
+      "ApprovedOn": "2026-05-15T14:48:03.477Z",
+      "Zone": 3,
+      "approved": true,
+      "DepartmentId": null,
+      "PromotionId": [
+        "C11C5BFB-B8AA-4C4D-964A-4570FA340824",
+        "C11C5BFB-B8AA-4C4D-964A-4570FA340824"
+      ],
+      "PromotionTitle": "GST Reforms 2.0",
+      "PromotionUrl": "https://cukapi.disgenweb.in/p/noticeboard/1778664239792-Brochure_Commerce_ICSSR%20(2).pdf"
+    },
+    {
+      "Id": 289,
+      "Name": "CUET-PG-2026.jpg",
+      "PhotoUrl": "https://cukapi.disgenweb.in/p/banner/1766054753716-CUET-PG-2026.jpg",
+      "CreateDate": "2025-12-18T16:16:00.000Z",
+      "Active": true,
+      "Create_by": 0,
+      "Height": 500,
+      "Width": 2048,
+      "Size_Kb": 106806,
+      "Order": -2,
+      "approve": null,
+      "ApprovedBy": 1,
+      "ApprovedOn": "2026-05-15T14:48:03.477Z",
+      "Zone": 3,
+      "approved": true,
+      "DepartmentId": null,
+      "PromotionId": [
+        "DDAC93BD-AA6A-4393-9344-424DE8ABCF13",
+        "DDAC93BD-AA6A-4393-9344-424DE8ABCF13"
+      ],
+      "PromotionTitle": "CUET PG 2026",
+      "PromotionUrl": "https://www.cukashmir.ac.in/#/departlist;id=397295BC-B6BD-4D3F-8CFF-80A6327410C7"
+    },
+    {
+      "Id": 283,
+      "Name": "Banner 2 copy (1).jpg",
+      "PhotoUrl": "https://cukapi.disgenweb.in/p/banner/1754376076787-Banner 2 copy (1).jpg",
+      "CreateDate": "2025-08-05T12:10:00.000Z",
+      "Active": true,
+      "Create_by": 0,
+      "Height": 500,
+      "Width": 2048,
+      "Size_Kb": 330992,
+      "Order": -1,
+      "approve": null,
+      "ApprovedBy": 1,
+      "ApprovedOn": "2026-05-15T14:48:03.477Z",
+      "Zone": 3,
+      "approved": true,
+      "DepartmentId": null,
+      "PromotionId": [
+        "A7C3535E-ABB6-4B19-88A7-494733506881",
+        "A7C3535E-ABB6-4B19-88A7-494733506881"
+      ],
+      "PromotionTitle": "NEP 2020 implementation",
+      "PromotionUrl": "https://www.cukashmir.ac.in/#/content?type=Press%20Release&id=0B3C1E4C-990D-4B37-82DE-593DB3FB74BE"
+    },
+    {
+      "Id": 279,
+      "Name": "Banner 1 copy (1).jpg",
+      "PhotoUrl": "https://cukapi.disgenweb.in/p/banner/1754369902599-Banner 1 copy (1).jpg",
+      "CreateDate": "2025-08-05T10:27:00.000Z",
+      "Active": true,
+      "Create_by": 0,
+      "Height": 500,
+      "Width": 2048,
+      "Size_Kb": 339299,
+      "Order": 0,
+      "approve": null,
+      "ApprovedBy": 1,
+      "ApprovedOn": "2026-05-15T14:48:03.437Z",
+      "Zone": 3,
+      "approved": true,
+      "DepartmentId": null,
+      "PromotionId": [
+        "A7C3535E-ABB6-4B19-88A7-494733506881",
+        "A7C3535E-ABB6-4B19-88A7-494733506881"
+      ],
+      "PromotionTitle": "NEP 2020 implementation",
+      "PromotionUrl": "https://www.cukashmir.ac.in/#/content?type=Press%20Release&id=0B3C1E4C-990D-4B37-82DE-593DB3FB74BE"
+    },
+    {
+      "Id": 284,
+      "Name": "Web Banner 2 copy.jpg",
+      "PhotoUrl": "https://cukapi.disgenweb.in/p/banner/1763030410601-Web Banner 2 copy.jpg",
+      "CreateDate": "2025-11-13T16:09:00.000Z",
+      "Active": true,
+      "Create_by": 0,
+      "Height": 500,
+      "Width": 2048,
+      "Size_Kb": 902531,
+      "Order": 1,
+      "approve": null,
+      "ApprovedBy": 1,
+      "ApprovedOn": "2026-05-15T14:48:03.477Z",
+      "Zone": 3,
+      "approved": true,
+      "DepartmentId": null,
+      "PromotionId": [
+        "E156FF1C-6EF3-43E8-B817-8CF79D9977CE",
+        "E156FF1C-6EF3-43E8-B817-8CF79D9977CE"
+      ],
+      "PromotionTitle": "LG",
+      "PromotionUrl": "https://cukashmir.ac.in/#/content?type=Press%20Release&id=E7DA1062-893A-4F5F-807A-81D49D920EC9"
+    },
+    {
+      "Id": 285,
+      "Name": "Web Banner 1 copy.jpg",
+      "PhotoUrl": "https://cukapi.disgenweb.in/p/banner/1763030423913-Web Banner 1 copy.jpg",
+      "CreateDate": "2025-11-13T16:09:00.000Z",
+      "Active": true,
+      "Create_by": 0,
+      "Height": 500,
+      "Width": 2048,
+      "Size_Kb": 934817,
+      "Order": 2,
+      "approve": null,
+      "ApprovedBy": 1,
+      "ApprovedOn": "2026-05-15T14:48:03.477Z",
+      "Zone": 3,
+      "approved": true,
+      "DepartmentId": null,
+      "PromotionId": [
+        "E156FF1C-6EF3-43E8-B817-8CF79D9977CE",
+        "E156FF1C-6EF3-43E8-B817-8CF79D9977CE"
+      ],
+      "PromotionTitle": "LG",
+      "PromotionUrl": "https://cukashmir.ac.in/#/content?type=Press%20Release&id=E7DA1062-893A-4F5F-807A-81D49D920EC9"
+    }
+  ]
+}

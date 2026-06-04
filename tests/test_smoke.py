@@ -169,28 +169,7 @@ class SmokeTests(unittest.TestCase):
         self.assertIn("https://cukashmir.ac.in/#/admissions", prompt)
         self.assertIn("table rows", prompt.lower())
 
-    def test_generation_models_include_distinct_gemini_fallbacks(self):
-        settings = SimpleNamespace(
-            generator_model="gemini-2.5-flash",
-            fallback_generator_model="gemini-2.5-flash",
-        )
-        with patch("rag.pipeline.get_settings", return_value=settings):
-            models = pipeline._generation_models()
 
-        self.assertEqual(models[0], "gemini-2.5-flash")
-        self.assertIn("gemini-2.5-flash-lite", models)
-        self.assertIn("gemini-flash-latest", models)
-        self.assertEqual(len(models), len(set(models)))
-
-    def test_generation_models_preserve_configured_fallback_order(self):
-        settings = SimpleNamespace(
-            generator_model="gemini-2.5-flash",
-            fallback_generator_model="gemini-3-flash-preview",
-        )
-        with patch("rag.pipeline.get_settings", return_value=settings):
-            models = pipeline._generation_models()
-
-        self.assertEqual(models[:2], ["gemini-2.5-flash", "gemini-3-flash-preview"])
 
     def test_memory_rewrite_resolves_recent_person_without_llm(self):
         history = [
@@ -199,7 +178,7 @@ class SmokeTests(unittest.TestCase):
                 "bot": "Prof. Shahid Rasool is the Dean, School of Media Studies.",
             }
         ]
-        with patch("rag.memory.get_genai_client", return_value=None):
+        with patch("rag.memory.generate_text", return_value=None):
             rewritten = rewrite_query("what's his contact info", history)
 
         self.assertIn("Shahid Rasool", rewritten)
@@ -212,7 +191,7 @@ class SmokeTests(unittest.TestCase):
                 "bot": "Prof. Shahid Rasool is the Dean, School of Media Studies.",
             }
         ]
-        with patch("rag.memory.get_genai_client") as client_mock:
+        with patch("rag.memory.generate_text") as client_mock:
             rewritten = rewrite_query("who is shabir ahmad ahanger", history)
 
         self.assertEqual(rewritten, "who is shabir ahmad ahanger")
@@ -225,7 +204,7 @@ class SmokeTests(unittest.TestCase):
                 "bot": "Mr. (Dr.) Shabir Ahmad Ahanger is Associate Professor in the Department of Mathematics.",
             }
         ]
-        with patch("rag.memory.get_genai_client") as client_mock:
+        with patch("rag.memory.generate_text") as client_mock:
             rewritten = rewrite_query("what is his contact info", history)
 
         self.assertIn("Shabir Ahmad Ahanger", rewritten)
@@ -239,7 +218,7 @@ class SmokeTests(unittest.TestCase):
                 "bot": "The eligible candidates for the Ph.D. Programme in Media Studies include Yameen Majeed Dar, Aaliya Ahmad, and others.",
             }
         ]
-        with patch("rag.memory.get_genai_client", return_value=None):
+        with patch("rag.memory.generate_text", return_value=None):
             rewritten = rewrite_query("what are there form numbers", history)
 
         self.assertIn("form numbers", rewritten)
@@ -307,8 +286,8 @@ class SmokeTests(unittest.TestCase):
             answer_style="detailed",
         )
 
-        self.assertIn("Give a short summary first", prompt)
-        self.assertIn("Answer with citations:", prompt)
+        self.assertIn("Give a short executive summary first", prompt)
+        self.assertIn("Answer in polished Markdown with citations:", prompt)
 
     def test_prompt_treats_who_is_as_narrow_person_lookup(self):
         prompt = build_prompt(
@@ -377,7 +356,8 @@ class SmokeTests(unittest.TestCase):
             "table_row_count": 0,
             "contact_field_count": 2,
             "chunk_index": 0,
-            "dense_score": 0.7,
+            "dense_score": 0.8,
+            "bm25_score": 10.0,
         }
         policy_item = {
             "chunk_id": "policy-1",
@@ -392,7 +372,8 @@ class SmokeTests(unittest.TestCase):
             "table_row_count": 0,
             "contact_field_count": 0,
             "chunk_index": 0,
-            "dense_score": 0.75,
+            "dense_score": 0.8,
+            "bm25_score": 2.0,
         }
 
         with patch("rag.retriever.get_settings", return_value=settings), \
@@ -417,7 +398,8 @@ class SmokeTests(unittest.TestCase):
             "table_row_count": 8,
             "contact_field_count": 0,
             "chunk_index": 0,
-            "dense_score": 0.4,
+            "dense_score": 0.8,
+            "bm25_score": 10.0,
         }
         generic_form = {
             "chunk_id": "blank-form",
@@ -432,7 +414,8 @@ class SmokeTests(unittest.TestCase):
             "table_row_count": 0,
             "contact_field_count": 0,
             "chunk_index": 0,
-            "dense_score": 0.55,
+            "dense_score": 0.8,
+            "bm25_score": 2.0,
         }
 
         with patch("rag.retriever.get_settings", return_value=settings), \

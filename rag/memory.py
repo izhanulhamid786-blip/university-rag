@@ -1,184 +1,88 @@
 import logging
-import re
 import sys
 from pathlib import Path
 
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from rag.llm import get_genai_client
-from rag.settings import get_settings
-
+from rag.llm import generate_text
 
 log = logging.getLogger(__name__)
-NON_PERSON_PHRASES = {
-    "central university",
-    "university office",
-    "school of",
-    "media studies",
-    "department of",
-    "associate professor",
-    "assistant professor",
-    "professor",
-    "dean",
-    "director",
-    "coordinator",
-    "controller of examinations",
-    "finance officer",
-    "registrar",
-    "chief vigilance officer",
-    "academic affairs",
+
+ROLE_KEYS = {
+    "assistant": ("assistant", "bot", "answer"),
+    "user": ("user", "human", "question"),
 }
-PERSON_WITH_TITLE_RE = re.compile(
-    r"\b(?:Prof\.?|Professor|Dr\.?|Mr\.?|Mrs\.?|Ms\.?)\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3}\b"
-)
-PERSON_NAME_RE = re.compile(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3}\b")
-REFERENCE_WORD_RE = re.compile(
-    r"\b(he|she|his|her|hers|him|they|them|their|theirs)\b",
-    re.IGNORECASE,
-)
-CONTEXTUAL_WORD_RE = re.compile(
-    r"\b(it|its|this|that|these|those|there|same|former|latter|mentioned|above|below)\b",
-    re.IGNORECASE,
-)
-FOLLOW_UP_PREFIX_RE = re.compile(r"^\s*(and|also|what about|how about|then|now)\b", re.IGNORECASE)
-AMBIGUOUS_FOLLOW_UP_RE = re.compile(
-    r"\b(form\s*(?:no|nos|number|numbers)|application\s*(?:no|number|numbers)|"
-    r"registration\s*(?:no|number|numbers)|roll\s*(?:no|number|numbers)|"
-    r"list|names?|candidates?|selected|eligible|date|time|venue|link|details?)\b",
-    re.IGNORECASE,
-)
-SPECIFIC_CONTEXT_RE = re.compile(
-    r"\b(ph\.?\s*d|phd|media studies|communication|journalism|department|school|programme|program|"
-    r"admission|selection|selected|eligible|eligibility|interview|screening|presentation|ppt|"
-    r"cuet|ug|pg|faculty|professor|teacher|contact|email|phone)\b",
-    re.IGNORECASE,
-)
+
+def _message_text(turn: dict, role: str) -> str:
+    for key in ROLE_KEYS[role]:
+        value = turn.get(key)
+        if value:
+            return str(value).strip()
+    if str(turn.get("role", "")).lower() == role and turn.get("content"):
+        return str(turn["content"]).strip()
+    return ""
+
+def _format_history_for_condense(history: list[dict], max_turns: int) -> str:
+    lines = []
+    for turn in history[-max_turns:]:
+        user_text = _message_text(turn, "user")
+        assistant_text = _message_text(turn, "assistant")
+        if user_text:
+            lines.append(f"User: {user_text}")
+        if assistant_text:
+            lines.append(f"Assistant: {assistant_text}")
+    return "\n".join(lines)
 
 
-def _extract_recent_person(history: list[dict]) -> str | None:
-    for turn in reversed(history[-4:]):
-        for field in ("bot", "user"):
-            text = (turn.get(field) or "").strip()
-            if not text:
-                continue
-
-            titled = PERSON_WITH_TITLE_RE.findall(text)
-            if titled:
-                return titled[-1].strip()
-
-            plain = [
-                match.strip()
-                for match in PERSON_NAME_RE.findall(text)
-                if not any(
-                    blocked in match.lower()
-                    for blocked in NON_PERSON_PHRASES
-                )
-            ]
-            if plain:
-                return plain[-1]
-    return None
-
-
-def _clean_recent_topic(text: str) -> str:
-    compact = " ".join((text or "").split())
-    compact = re.sub(r"\s*Sources:\s*\[\d+(?:,\s*\d+)*\].*$", "", compact, flags=re.IGNORECASE)
-    compact = re.sub(r"\[[0-9,\s]+\]", "", compact)
-    compact = compact.strip(" .:-")
-    if len(compact) > 220:
-        compact = compact[:220].rsplit(" ", 1)[0].strip()
-    return compact
-
-
-def _extract_recent_topic(history: list[dict]) -> str | None:
-    for turn in reversed(history[-3:]):
-        user_text = _clean_recent_topic(turn.get("user") or "")
-        bot_text = _clean_recent_topic(turn.get("bot") or "")
-
-        for text in (user_text, bot_text):
-            if not text:
-                continue
-            if SPECIFIC_CONTEXT_RE.search(text):
-                return text
-    return None
-
-
-def _looks_context_dependent(query: str) -> bool:
-    clean = (query or "").strip()
-    if not clean:
-        return False
-    if REFERENCE_WORD_RE.search(clean) or CONTEXTUAL_WORD_RE.search(clean) or FOLLOW_UP_PREFIX_RE.search(clean):
-        return True
-    return bool(AMBIGUOUS_FOLLOW_UP_RE.search(clean) and not SPECIFIC_CONTEXT_RE.search(clean))
-
-
-def _local_rewrite(query: str, history: list[dict]) -> str:
-    if not history or not _looks_context_dependent(query):
+def condense_question(
+    chat_history: list[dict],
+    new_user_query: str,
+    *,
+    max_history_turns: int = 4,
+) -> str:
+    """Rewrite a follow-up into a standalone retrieval query using the LLM.
+    
+    This replaces brittle regex heuristics with an intelligent contextualizer.
+    """
+    query = (new_user_query or "").strip()
+    if not query or not chat_history:
         return query
 
-    rewritten = query
-    person = _extract_recent_person(history)
-    if person:
-        rewritten = re.sub(r"\bhis\b", f"{person}'s", rewritten, flags=re.IGNORECASE)
-        rewritten = re.sub(r"\bher\b", f"{person}'s", rewritten, flags=re.IGNORECASE)
-        rewritten = re.sub(r"\bhim\b", person, rewritten, flags=re.IGNORECASE)
-        rewritten = re.sub(r"\bhe\b", person, rewritten, flags=re.IGNORECASE)
-        rewritten = re.sub(r"\bshe\b", person, rewritten, flags=re.IGNORECASE)
+    turns = _format_history_for_condense(chat_history, max_history_turns)
+    if not turns:
+        return query
 
-    topic = _extract_recent_topic(history)
-    plural_reference = re.search(r"\b(they|them|their|theirs|there|these|those|mentioned|above|below)\b", query, re.I)
-    still_ambiguous = (
-        plural_reference
-        or AMBIGUOUS_FOLLOW_UP_RE.search(query)
-        or CONTEXTUAL_WORD_RE.search(query)
-        or FOLLOW_UP_PREFIX_RE.search(query)
-    )
-    if topic and still_ambiguous and topic.lower() not in rewritten.lower():
-        rewritten = re.sub(r"\bthere\b", "their", rewritten, flags=re.IGNORECASE)
-        rewritten = f"{rewritten.rstrip(' ?')}; context: {topic}"
+    prompt = f"""You are a smart context-resolver for a university search engine.
+Read the recent conversation, then look at the user's latest follow-up question.
 
-    return rewritten
+Conversation History:
+{turns}
+
+Follow-up Question:
+{query}
+
+Instructions:
+1. If the Follow-up Question refers to a topic in the Conversation History (using pronouns like he/she/it, or implicitly asking for more details about a discussed topic like "what is the fee?"), rewrite it into a complete, standalone search query containing the specific topic, name, department, or notice.
+2. If the Follow-up Question is completely new and unrelated to the Conversation History (e.g., asking about a new department or person not mentioned before), DO NOT add previous context. Output the Follow-up Question EXACTLY AS IS.
+3. Do not answer the question. Only output the standalone query.
+4. Do not wrap the output in quotes.
+
+Standalone Query:"""
+
+    try:
+        rewritten = str(generate_text(prompt, stream=False) or "").strip()
+        # Clean any accidental quotes around the output
+        if rewritten.startswith('"') and rewritten.endswith('"'):
+            rewritten = rewritten[1:-1].strip()
+        if rewritten.startswith("'") and rewritten.endswith("'"):
+            rewritten = rewritten[1:-1].strip()
+        return rewritten or query
+    except Exception as exc:
+        log.warning("Question condensation failed, using original query: %s", exc)
+        return query
 
 
 def rewrite_query(query: str, history: list[dict]) -> str:
-    if not history:
-        return query
-
-    local_rewrite = _local_rewrite(query, history)
-    if REFERENCE_WORD_RE.search(query):
-        return local_rewrite
-    if local_rewrite != query:
-        return local_rewrite
-
-    should_try_llm = _looks_context_dependent(query)
-    if not should_try_llm:
-        return local_rewrite
-
-    client = get_genai_client(required=False)
-    if client is None:
-        return local_rewrite
-
-    recent_turns = history[-4:]
-    turns = "\n".join(f"User: {turn['user']}\nAssistant: {turn['bot']}" for turn in recent_turns)
-    prompt = f"""Given this conversation:
-{turns}
-
-Rewrite the new question so it is fully self-contained and preserves the user's intent.
-If the new question uses a reference like "he", "she", "his", "her", "they", or "their",
-replace it with the exact person or subject mentioned most recently in the conversation.
-Do not switch to a different person just because another person might match the topic.
-Return only the rewritten question.
-
-Question: {query}
-"""
-
-    try:
-        response = client.models.generate_content(
-            model=get_settings().generator_model,
-            contents=prompt,
-        )
-        rewritten = (response.text or "").strip()
-        return rewritten or local_rewrite
-    except Exception as exc:
-        log.warning("Query rewrite failed, using original query: %s", exc)
-        return local_rewrite
+    """Backward-compatible wrapper around ``condense_question``."""
+    return condense_question(history, query)

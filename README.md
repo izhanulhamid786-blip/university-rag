@@ -19,7 +19,7 @@ A production-ready university RAG assistant that crawls official university data
 - ChromaDB
 - Sentence Transformers
 - BM25
-- Google Gemini API
+- Groq API
 - Playwright
 
 ## Project Structure
@@ -62,17 +62,17 @@ python -m playwright install chromium
 Copy-Item .env.example .env
 ```
 
-4. Add your Gemini API key to `.env`.
+4. Add your Groq API key to `.env`.
 
 ```env
-GOOGLE_API_KEY=your_key_here
+GROQ_API_KEY=your_key_here
 ```
 
 ## Environment Variables
 
 Key runtime settings are defined in `.env.example`.
 
-- `GOOGLE_API_KEY`: Gemini API key
+- `GROQ_API_KEY`: Groq API key
 - `GENERATOR_MODEL`: main answer generation model
 - `FALLBACK_GENERATOR_MODEL`: fallback generation model
 - `RAG_EMBED_MODEL`: embedding model for vector search (default: `BAAI/bge-m3`)

@@ -1,0 +1,112 @@
+{
+  "api_url": "https://cukapi.disgenweb.in/mediagallery/getmediagalleryforwebsite2",
+  "source_page": "https://cukashmir.ac.in/#/publiczone",
+  "payload": [
+    [
+      {
+        "Id": "5B005158-7E20-4405-B6B8-EF9C9215888E",
+        "DepartmentId": "F1C195F3-CE78-4C49-9992-7186064229AD",
+        "Title": "NEP 2020 implementation Event  ",
+        "Category": "EA163F19-DB22-42D2-B4DD-B19FD5AF4F43",
+        "FileName": "1754322277072-_SAM0393-min.JPG",
+        "FilePath": "https://cukapi.disgenweb.in/p/mediagallery/1754322277072-_SAM0393-min.JPG",
+        "CreatedDate": "2025-08-04T21:13:30.907Z",
+        "UpdatedDate": "2025-08-04T21:13:30.907Z",
+        "IsActive": true,
+        "CategoryTitle": "NEP 2020 Implementation Event",
+        "TotalRecords": 83
+      },
+      {
+        "Id": "1700302C-02CA-418A-9E16-AA7B1F62CCE2",
+        "DepartmentId": "F1C195F3-CE78-4C49-9992-7186064229AD",
+        "Title": "NEP 2020 implementation Event  ",
+        "Category": "EA163F19-DB22-42D2-B4DD-B19FD5AF4F43",
+        "FileName": "1754322134494-_SAM1118-min.JPG",
+        "FilePath": "https://cukapi.disgenweb.in/p/mediagallery/1754322134494-_SAM1118-min.JPG",
+        "CreatedDate": "2025-08-04T21:11:05.047Z",
+        "UpdatedDate": "2025-08-04T21:11:05.047Z",
+        "IsActive": true,
+        "CategoryTitle": "NEP 2020 Implementation Event",
+        "TotalRecords": 83
+      },
+      {
+        "Id": "1D361BA9-4AFC-4D38-AB49-E7028A64E776",
+        "DepartmentId": "F1C195F3-CE78-4C49-9992-7186064229AD",
+        "Title": "NEP 2020 implementation Event  ",
+        "Category": "EA163F19-DB22-42D2-B4DD-B19FD5AF4F43",
+        "FileName": "1754322117743-_SAM1053-min.JPG",
+        "FilePath": "https://cukapi.disgenweb.in/p/mediagallery/1754322117743-_SAM1053-min.JPG",
+        "CreatedDate": "2025-08-04T21:10:48.937Z",
+        "UpdatedDate": "2025-08-04T21:10:48.937Z",
+        "IsActive": true,
+        "CategoryTitle": "NEP 2020 Implementation Event",
+        "TotalRecords": 83
+      },
+      {
+        "Id": "9CD89655-CD57-4A21-BE67-51D8F3547DE0",
+        "DepartmentId": "1680E3C6-E6AD-4309-8758-388807F78CB4",
+        "Title": "NEP 2020 implementation Event  ",
+        "Category": "EA163F19-DB22-42D2-B4DD-B19FD5AF4F43",
+        "FileName": "1754322103394-_SAM1003-min.JPG",
+        "FilePath": "https://cukapi.disgenweb.in/p/mediagallery/1754322103394-_SAM1003-min.JPG",
+        "CreatedDate": "2025-08-04T21:10:32.743Z",
+        "UpdatedDate": "2025-08-04T21:10:32.743Z",
+        "IsActive": true,
+        "CategoryTitle": "NEP 2020 Implementation Event",
+        "TotalRecords": 83
+      },
+      {
+        "Id": "7D95E148-AF2B-43E4-BD1D-5DA87B8C418D",
+        "DepartmentId": "1A522CF6-7175-4FD3-9AF7-0614EB78DAA6",
+        "Title": "NEP 2020 implementation Event  ",
+        "Category": "EA163F19-DB22-42D2-B4DD-B19FD5AF4F43",
+        "FileName": "1754322086691-_SAM0943-min.JPG",
+        "FilePath": "https://cukapi.disgenweb.in/p/mediagallery/1754322086691-_SAM0943-min.JPG",
+        "CreatedDate": "2025-08-04T21:10:18.173Z",
+        "UpdatedDate": "2025-08-04T21:10:18.173Z",
+        "IsActive": true,
+        "CategoryTitle": "NEP 2020 Implementation Event",
+        "TotalRecords": 83
+      },
+      {
+        "Id": "D4FE3125-24A9-4FB6-B0D8-B2E05E4472E8",
+        "DepartmentId": "C4021D14-6C7C-4B16-BB86-193D245642AF",
+        "Title": "NEP 2020 implementation Event  ",
+        "Category": "EA163F19-DB22-42D2-B4DD-B19FD5AF4F43",
+        "FileName": "1754322070660-_SAM0851-min.JPG",
+        "FilePath": "https://cukapi.disgenweb.in/p/mediagallery/1754322070660-_SAM0851-min.JPG",
+        "CreatedDate": "2025-08-04T21:10:01.287Z",
+        "UpdatedDate": "2025-08-04T21:10:01.287Z",
+        "IsActive": true,
+        "CategoryTitle": "NEP 2020 Implementation Event",
+        "TotalRecords": 83
+      },
+      {
+        "Id": "4EB70150-F6AB-44F2-BC0A-0199944F0150",
+        "DepartmentId": "DBC0DA3E-AF5E-4115-ABD9-3484188BED9A",
+        "Title": "NEP 2020 implementation Event  ",
+        "Category": "EA163F19-DB22-42D2-B4DD-B19FD5AF4F43",
+        "FileName": "1754322054590-_SAM0747-min.JPG",
+        "FilePath": "https://cukapi.disgenweb.in/p/mediagallery/1754322054590-_SAM0747-min.JPG",
+        "CreatedDate": "2025-08-04T21:09:45.973Z",
+        "UpdatedDate": "2025-08-04T21:09:45.973Z",
+        "IsActive": true,
+        "CategoryTitle": "NEP 2020 Implementation Event",
+        "TotalRecords": 83
+      },
+      {
+        "Id": "E0B2A45B-81A3-46A3-A53F-0CD617F8B2EC",
+        "DepartmentId": "7022529F-5494-4B1E-9A76-EB211C56019A",
+        "Title": "Photo1",
+        "Category": "0137C4F2-AA33-49B5-B542-CEAE5554B4C5",
+        "FileName": "1751962350934-it.jpg",
+        "FilePath": "https://cukapi.disgenweb.in/p/mediagallery/1751962350934-it.jpg",
+        "CreatedDate": "2025-07-08T13:41:56.677Z",
+        "UpdatedDate": "2025-07-08T13:41:56.677Z",
+        "IsActive": true,
+        "CategoryTitle": "IT Department",
+        "TotalRecords": 83
+      }
+    ]
+  ]
+}

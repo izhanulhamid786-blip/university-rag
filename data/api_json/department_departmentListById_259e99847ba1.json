@@ -1,0 +1,25 @@
+{
+  "api_url": "https://cukapi.disgenweb.in/department/departmentListById",
+  "source_page": "https://cukashmir.ac.in/#/departmentList;id=E56E48B9-21C9-453B-86E2-3977333D4091;menuid=90BC6C77-58F4-4E53-8D0B-A164B6FFBFBF",
+  "payload": [
+    {
+      "DepartmentMasterId": "90BC6C77-58F4-4E53-8D0B-A164B6FFBFBF",
+      "ParentDepartmentMasterId": "E56E48B9-21C9-453B-86E2-3977333D4091",
+      "IsHasLeftSectionSubMenus": false,
+      "IsExternalLink": false,
+      "IsActive": true,
+      "ExternalLinkUrl": "",
+      "Order": 11,
+      "CreatedOn": "2020-01-30T19:30:18.553Z",
+      "CreatedBy": 1,
+      "UpdatedOn": "2023-03-24T15:44:23.560Z",
+      "UpdatedBy": 1,
+      "DepartmentId": "9CA0BB16-4B02-4C09-8812-7DC89167F05A",
+      "LangType": 1,
+      "DepartmentName": "List of Admitted Students",
+      "DepartmentTitle": "List of Admitted Students",
+      "DepartmentDescription": "<p><strong><a title=\"List of Admitted Students MEd 2021.pdf\" href=\"https://cukapi.disgenweb.in/p/upload/1679651935718-List of Admitted Students M_Ed 2021.pdf\">List of Admitted Students MEd 2021.pdf</a></strong></p>\n<p><strong><a title=\"List of Admitted Students MEd 2020.pdf\" href=\"https://cukapi.disgenweb.in/p/upload/1679651923175-List of Admitted Students M_Ed 2020.pdf\">List of Admitted Students MEd 2020.pdf</a></strong></p>\n<p><strong><a title=\"LIST OF ADMITTED STUDENTS IBM 2022.pdf\" href=\"https://cukapi.disgenweb.in/p/upload/1679651916922-IBM 2022.pdf\">LIST OF ADMITTED STUDENTS IBM 2022.pdf</a></strong></p>\n<p><strong><a title=\"List of Admitted students IBM 2021.pdf\" href=\"https://cukapi.disgenweb.in/p/upload/1679651929859-List of Admitted students IBM 2021.pdf\">List of Admitted students IBM 2021.pdf</a></strong></p>\n<p><strong><a title=\"List of Admitted Students IBM -2020.pdf\" href=\"https://cukapi.disgenweb.in/p/upload/1679652651025-List of Admitted Students IBM -2020.pdf\">List of Admitted Students IBM -2020.pdf</a></strong></p>",
+      "SubChildCount": 0
+    }
+  ]
+}

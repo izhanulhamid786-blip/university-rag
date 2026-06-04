@@ -1,0 +1,22 @@
+{
+  "api_url": "https://cukapi.disgenweb.in/howtoreachcuk/gethowtoreachcuk",
+  "source_page": "https://cukashmir.ac.in/#/publiczone",
+  "payload": [
+    {
+      "Id": "60B07DB3-FFDB-4979-A59C-D0E2E9D3B897",
+      "HeadTitle": "How to reach CUK ?",
+      "SubTitle": "How to reach CUK ?",
+      "ShortDescription": "<p>The Central University of Kashmir is located in District Ganderbal of the Union Territory of Jammu &amp; Kashmir (J&amp;K). The university is spread across four different campuses in the district viz:</p>\n<ol>\n<li>Main Campus Tulmulla.</li>\n<li>Science Campus Nunar.</li>\n<li>Arts Campus Duderhama.</li>\n<li>Green Campus Duderhama.</li>\n</ol>",
+      "LongDescription": "<p><span style=\"text-decoration: underline;\"><strong>LAND ROUTES TO OUR CAMPUSES:</strong></span></p>\n<p><span style=\"font-size: 10pt;\"><strong>Tulmulla Campus:&nbsp;&nbsp; </strong></span></p>\n<p><span style=\"font-size: 10pt;\">Lal-Chowk&gt; Khanyar &gt;Nowhatta &gt; Soura &gt; Nagbal &gt; Beehama&gt; Tulmulla.</span></p>\n<p><span style=\"font-size: 10pt;\"><strong>Green Campus:</strong></span></p>\n<p><span style=\"font-size: 10pt;\">Lal-Chowk &gt; Khanyar &gt; Nowhatta &gt; Soura &gt; Nagbal &gt; Beehama &gt; Green Campus.</span></p>\n<p><span style=\"font-size: 10pt;\"><strong>Science Campus:&nbsp; </strong></span></p>\n<p><span style=\"font-size: 10pt;\">Lal-Chowk &gt;&nbsp; Khanyar &gt; Nowhatta &gt; Soura &gt; Nagbal &gt; Beehama &gt; Nunar.</span></p>\n<p><span style=\"font-size: 10pt;\"><strong>Arts Campus: </strong></span></p>\n<p><span style=\"font-size: 10pt;\">LalChowk &gt; Khanyar &gt; Nowhatta &gt; Soura &gt; Nagbal &gt; Beehama &gt; Dudrhama.</span></p>",
+      "CreatedBy": 1,
+      "CreatedDate": "2020-05-13T18:07:12.020Z",
+      "UpdatedBy": 1,
+      "UpdatedDate": "2022-09-25T21:39:28.723Z",
+      "IsActive": true,
+      "HowToReachCukId": "91979E2A-BF52-482A-91AF-FEB66254B471",
+      "FileName": "1651831886013-Location-Infographics-min.jpg",
+      "HttpPath": "http://cukapi.disgenweb.in/p/howtoreachcuk/1651831886013-Location-Infographics-min.jpg",
+      "LangType": 1
+    }
+  ]
+}

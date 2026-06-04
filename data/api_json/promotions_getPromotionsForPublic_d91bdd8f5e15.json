@@ -1,0 +1,28 @@
+{
+  "api_url": "https://cukapi.disgenweb.in/promotions/getPromotionsForPublic",
+  "source_page": "https://cukashmir.ac.in/#/publiczone",
+  "payload": [
+    {
+      "Id": "C11C5BFB-B8AA-4C4D-964A-4570FA340824",
+      "Title": "GST Reforms 2.0",
+      "Description": "",
+      "StartDate": "2026-05-15T00:00:00.000Z",
+      "EndDate": "2026-07-17T00:00:00.000Z",
+      "Url": "https://cukapi.disgenweb.in/p/noticeboard/1778664239792-Brochure_Commerce_ICSSR%20(2).pdf",
+      "FileName": null,
+      "FilePath": null,
+      "IsActive": true,
+      "CreatedBy": 1,
+      "CreatedDate": "2026-05-15T14:47:14.773Z",
+      "UpdatedBy": 1,
+      "UpdatedDate": "2026-05-15T14:47:14.773Z",
+      "PromotionsId": "46BAB4B3-0690-4D09-BA1E-49D7A02BC65A",
+      "LangType": 1,
+      "approved": true,
+      "ApprovedBy": 1,
+      "ApprovedOn": "2026-05-15T14:47:20.497Z",
+      "Zone": 3,
+      "UserName": "Super Admin"
+    }
+  ]
+}

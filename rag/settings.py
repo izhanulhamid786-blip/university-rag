@@ -67,9 +67,10 @@ class Settings:
     collection_name: str
     embed_model: str
     rerank_model: str
+    generator_provider: str
     generator_model: str
     fallback_generator_model: str | None
-    google_api_key: str | None
+    generator_api_key: str | None
     retrieval_k: int
     rerank_top_k: int
     rerank_candidate_k: int
@@ -99,14 +100,15 @@ def get_settings() -> Settings:
         doc_hashes_path=_env_path("RAG_DOC_HASHES_PATH", data_dir / ".doc_hashes.json"),
         vector_db_dir=_env_path("RAG_VECTOR_DB_DIR", PROJECT_ROOT / "vector_db"),
         collection_name=os.getenv("RAG_COLLECTION", "university_kb"),
-        embed_model=os.getenv("RAG_EMBED_MODEL", "BAAI/bge-m3"),
+        embed_model=os.getenv("RAG_EMBED_MODEL", "BAAI/bge-base-en-v1.5"),
         rerank_model=os.getenv("RAG_RERANK_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2"),
-        generator_model=os.getenv("GENERATOR_MODEL", "gemini-2.5-flash"),
+        generator_provider=os.getenv("GENERATOR_PROVIDER", "groq"),
+        generator_model=os.getenv("GENERATOR_MODEL", "llama-3.1-8b-instant"),
         fallback_generator_model=(
             _first_env("FALLBACK_GENERATOR_MODEL", "GENERATOR_FALLBACK_MODEL")
-            or "gemini-2.5-flash-lite"
+            or "llama3-8b-8192"
         ),
-        google_api_key=_first_env("GOOGLE_API_KEY", "GEMINI_API_KEY"),
+        generator_api_key=_first_env("GROQ_API_KEY"),
         retrieval_k=max(5, _env_int("RAG_RETRIEVAL_K", 20)),
         rerank_top_k=max(1, _env_int("RAG_RERANK_TOP_K", 5)),
         rerank_candidate_k=max(4, _env_int("RAG_RERANK_CANDIDATES", 12)),

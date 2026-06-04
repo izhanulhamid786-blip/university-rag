@@ -1,0 +1,150 @@
+{
+  "api_url": "https://cukapi.disgenweb.in/eventgallerymanage/getallForWebSiteList",
+  "source_page": "https://cukashmir.ac.in/#/publiczone",
+  "payload": [
+    {
+      "Title": "Science in Kashmiri Fiction",
+      "Description": "<p style=\"font-weight: 400; text-align: justify;\">Science Communication Popularization and Extension (SCoPE) in the Kashmiri Language&rdquo; is a Vigyan Prasar, DS&amp;T, New Delhi, funded project at the Central University of Kashmir and the University of Kashmir. SCoPE promotes Science in the Kashmiri language to create scientific temperament among society, to explore the scientific dimensions of Language and bridge the gap between scientists and language experts. SCoPE often organises seminars workshops, extension lectures, group-in discussions, symposiums etc. The SCoPE (Kashmiri) is going to organise a three-day Workshop from 06<sup>th</sup>&nbsp;-08<sup>th</sup>&nbsp;of September 2022, at Conference Hall Tullamulla Campus, CUK, on the given theme:</p>\n<p style=\"font-weight: 400; text-align: justify;\">&nbsp;</p>\n<p style=\"font-weight: 400; text-align: justify;\"><strong>&nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;</strong><strong>&ldquo;Science in Kashmiri Fiction&rsquo;&rsquo;</strong></p>",
+      "StartDate": "2022-09-06T00:00:00.000Z",
+      "EndDate": "2022-09-08T00:00:00.000Z",
+      "Venue": "Conference Hall Tulmulla Campus",
+      "RefId": "6D6B91E8-B0F1-4442-BA3F-DF1D7ADF7EB6",
+      "IsActive": true,
+      "approved": true,
+      "FilePath": "https://cukapi.disgenweb.in/p/event/1662047481553-CUKLogo.png",
+      "PdfDocsId": 2222
+    },
+    {
+      "Title": "CUK’s SLS, NIT holds Mini TEDX",
+      "Description": "<p style=\"font-weight: 400; text-align: justify;\">Ganderbal, Apr 28: Department of Law, School of Legal Studies (SLS), Central University of Kashmir (CUK) in collaboration with the National Institute of Technology (NIT), Srinagar organized a one-day Mini TEDX Srinagar talks competition in the Moot Court hall of here on Wednesday.</p>\n<p style=\"font-weight: 400; text-align: justify;\">Dr. Anil Kumar, Asst Prof, and co-ordinator of programme, gave the introduction of the concept of TEDX Talks competition while Mr Bilal Ahmad Ganaie, Asst Prof. and Coordinator of the Department gave his welcome address. The jury members on the occasion were Dr. Shahid Lone, HSS department, Asst Prof. NIT and Dr. Nufazil Altaf, Asst Prof. HSS department NIT.</p>\n<p style=\"font-weight: 400; text-align: justify;\">In his special remarks, Dean SLS, Prof Farooq Ahmad Mir, hailed the department for holding such competitions. He felt that the need of hour is constructive, innovative and critical thinking approach of the students pursuing Law.</p>\n<p style=\"font-weight: 400; text-align: justify;\">Dr. Nufazil Altaf, made a formal introduction to the concept of TEDX competition by referring to the role of technology, entertainment and design in higher education. Dr. Altaf gave details as to how students would be selected from the department for participation in the main event conducted by the TEDX. The parameters for the selection were based on the content and presentation of the participants.</p>\n<p style=\"font-weight: 400; text-align: justify;\">Lastly, Dr. Shahid Lone explained in detail the concept of TEDX talks competition which will give opportunity to students on bigger platforms to perform and express themselves.</p>\n<p style=\"font-weight: 400; text-align: justify;\">Mr. Pabhakar, student from NIT Srinagar presented vote of thanks.</p>",
+      "StartDate": "2022-05-06T00:00:00.000Z",
+      "EndDate": "2023-05-06T00:00:00.000Z",
+      "Venue": "CUK",
+      "RefId": "9AAC5986-7E40-4E2A-AF46-AD5FFD1D25B7",
+      "IsActive": true,
+      "approved": true,
+      "FilePath": "https://cukapi.disgenweb.in/p/event/1652074354985-CUK.jpg",
+      "PdfDocsId": 2205
+    },
+    {
+      "Title": "CUK’s SLS, NIT holds Mini TEDX",
+      "Description": "<p style=\"font-weight: 400; text-align: justify;\">Ganderbal, Apr 28: Department of Law, School of Legal Studies (SLS), Central University of Kashmir (CUK) in collaboration with the National Institute of Technology (NIT), Srinagar organized a one-day Mini TEDX Srinagar talks competition in the Moot Court hall of here on Wednesday.</p>\n<p style=\"font-weight: 400; text-align: justify;\">Dr. Anil Kumar, Asst Prof, and co-ordinator of programme, gave the introduction of the concept of TEDX Talks competition while Mr Bilal Ahmad Ganaie, Asst Prof. and Coordinator of the Department gave his welcome address. The jury members on the occasion were Dr. Shahid Lone, HSS department, Asst Prof. NIT and Dr. Nufazil Altaf, Asst Prof. HSS department NIT.</p>\n<p style=\"font-weight: 400; text-align: justify;\">In his special remarks, Dean SLS, Prof Farooq Ahmad Mir, hailed the department for holding such competitions. He felt that the need of hour is constructive, innovative and critical thinking approach of the students pursuing Law.</p>\n<p style=\"font-weight: 400; text-align: justify;\">Dr. Nufazil Altaf, made a formal introduction to the concept of TEDX competition by referring to the role of technology, entertainment and design in higher education. Dr. Altaf gave details as to how students would be selected from the department for participation in the main event conducted by the TEDX. The parameters for the selection were based on the content and presentation of the participants.</p>\n<p style=\"font-weight: 400; text-align: justify;\">Lastly, Dr. Shahid Lone explained in detail the concept of TEDX talks competition which will give opportunity to students on bigger platforms to perform and express themselves.</p>\n<p style=\"font-weight: 400; text-align: justify;\">Mr. Pabhakar, student from NIT Srinagar presented vote of thanks.</p>",
+      "StartDate": "2022-05-06T00:00:00.000Z",
+      "EndDate": "2023-05-06T00:00:00.000Z",
+      "Venue": "CUK",
+      "RefId": "9AAC5986-7E40-4E2A-AF46-AD5FFD1D25B7",
+      "IsActive": true,
+      "approved": true,
+      "FilePath": "https://cukapi.disgenweb.in/p/event/1664207701703-CUKLogo.png",
+      "PdfDocsId": 2225
+    },
+    {
+      "Title": "Science Communication, Popularization, & its Extension",
+      "Description": "<p><em>Science Communication Popularization and Extension (SCoPE)</em><strong>&nbsp;</strong>is a project of Vigyan Prasar, New Delhi Ministry of Science and Technology Government of India, &nbsp;simply its mission is to promote science in the local language/mother tongue. Weeklong SCoPE Festival begins from 22 Feb 2022 to 28 Feb 2022. Venue; Gandhi Bhawan, University of Kashmir, Hazratbal.</p>",
+      "StartDate": "2022-02-22T00:00:00.000Z",
+      "EndDate": "2023-02-22T00:00:00.000Z",
+      "Venue": "Gandhi Bhavan , University of Kashmir",
+      "RefId": "4F5A3434-88BA-48F3-83BB-63EBD665F908",
+      "IsActive": true,
+      "approved": true,
+      "FilePath": "https://cukapi.disgenweb.in/p/event/1652074354985-CUK.jpg",
+      "PdfDocsId": 2197
+    },
+    {
+      "Title": "One Day National Seminar on Corruption Free Society-Role and Responsibility",
+      "Description": "<p style=\"text-align: justify;\">The school of Education is organising a one-day national seminar/debate on international Anti-corruption day, on Dec-09-2021 at Green Campus, CUK, From 11:00 AM to 5 PM.&nbsp;</p>\n<p style=\"text-align: justify;\"><a title=\"One Day Seminar- Description Link\" href=\"http://cukapi.disgenweb.in/p/noticeboard/1637818699143-CUK%20SOE%20H.pdf\">One Day Seminar- Description Link</a></p>\n<p style=\"text-align: justify;\"><strong>Theme Of Seminar:</strong></p>\n<p style=\"text-align: justify;\">&ldquo;Corruption free Society: Role and Responsibility&rdquo;</p>\n<p style=\"text-align: justify;\"><strong>Sub Themes:</strong></p>\n<p style=\"text-align: justify;\">Role of Education in the abolition of Corruption<br />Role of School in eradicating Corruption<br />Corruption, Corruption; go away leave my homeland<br />Examination and Cheating<br />Technology and Illegal acts<br />Stop All types of Corruption<br />Student&rsquo;s role making Corruption free society</p>",
+      "StartDate": "2021-11-25T00:00:00.000Z",
+      "EndDate": "2022-11-25T00:00:00.000Z",
+      "Venue": "Green Campus-CUK",
+      "RefId": "6496C2D2-015E-46A1-9DA3-B71823EB1144",
+      "IsActive": true,
+      "approved": true,
+      "FilePath": "https://cukapi.disgenweb.in/p/event/1652074354985-CUK.jpg",
+      "PdfDocsId": 1193
+    },
+    {
+      "Title": "Two Week's Research Methodology Workshop for the PhD students ",
+      "Description": "<p><span style=\"color: #222222; font-family: Arial, Helvetica, sans-serif; font-size: small; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 400; letter-spacing: normal; orphans: 2; text-align: start; text-indent: 0px; text-transform: none; white-space: normal; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; background-color: #ffffff; text-decoration-thickness: initial; text-decoration-style: initial; text-decoration-color: initial; display: inline !important; float: none;\">Directorate&nbsp;of Research and Development of the Central University of Kashmir is orgaining a&nbsp;</span><strong style=\"color: #222222; font-family: Arial, Helvetica, sans-serif; font-size: small; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; letter-spacing: normal; orphans: 2; text-align: start; text-indent: 0px; text-transform: none; white-space: normal; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; background-color: #ffffff; text-decoration-thickness: initial; text-decoration-style: initial; text-decoration-color: initial;\">Two Week's Research Methodology Workshop&nbsp;</strong><span style=\"color: #222222; font-family: Arial, Helvetica, sans-serif; font-size: small; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 400; letter-spacing: normal; orphans: 2; text-align: start; text-indent: 0px; text-transform: none; white-space: normal; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; background-color: #ffffff; text-decoration-thickness: initial; text-decoration-style: initial; text-decoration-color: initial; display: inline !important; float: none;\">for the PhD students from 29th September, 2021.&nbsp;</span></p>",
+      "StartDate": "2021-09-27T00:00:00.000Z",
+      "EndDate": "2022-10-11T00:00:00.000Z",
+      "Venue": "IQAC Hall Green Campus",
+      "RefId": "F58AE9F4-728C-4BFF-9F7C-8F641730573F",
+      "IsActive": true,
+      "approved": true,
+      "FilePath": "https://cukapi.disgenweb.in/p/event/1652074354985-CUK.jpg",
+      "PdfDocsId": 192
+    },
+    {
+      "Title": "Hindi-Divas Celebration",
+      "Description": "<p>Organized by Raj Bhasha Cell Central University Of Kashmir :</p>\n<p>Date:14-09-2021</p>\n<p>Time:10:30 AM to 5 PM</p>",
+      "StartDate": "2021-09-18T00:00:00.000Z",
+      "EndDate": "2022-09-18T00:00:00.000Z",
+      "Venue": "IQAC HALL",
+      "RefId": "0AB3FCA9-EF65-47E7-8E86-482779878183",
+      "IsActive": true,
+      "approved": true,
+      "FilePath": "https://cukapi.disgenweb.in/p/event/1652074354985-CUK.jpg",
+      "PdfDocsId": 190
+    },
+    {
+      "Title": "Criminal Justice System in 21st Century: Emerging Challenges and a Way Forward",
+      "Description": "<p>Department of Law, School of Legal Studies is organizing a two-day national online seminar on the theme &ldquo;Criminal Justice System in 21st Century: Emerging Challenges and a Way Forward&rdquo; on 27th and 28th August 2021. It is pertinent to mention that among others two Hon&rsquo;ble Judges of the Supreme of India and Former Chief Justice of the Jammu and Kashmir High Court shall be the speakers.The venue for the event will be IT-Hall Tulmulla Campus.<br /><br /></p>",
+      "StartDate": "2021-08-26T00:00:00.000Z",
+      "EndDate": "2022-08-26T00:00:00.000Z",
+      "Venue": "IT Meeting Hall-Tulmullah Campus",
+      "RefId": "E9D3225A-3D7A-4ABF-AA3E-D937B8369CF4",
+      "IsActive": true,
+      "approved": true,
+      "FilePath": "https://cukapi.disgenweb.in/p/event/1652074354985-CUK.jpg",
+      "PdfDocsId": 188
+    },
+    {
+      "Title": "“Role of ethnobotany in sustainable uses of plant resources“",
+      "Description": "<p>The Deptt of Botany, School of Life Sciences, Central University of Kashmir is organising an invited lecture on &ldquo;Role of ethnobotany in sustainable uses of plant resources&ldquo; on&nbsp; 14th June, 2021 (Mon) from 2 PM. For further details kindly contact the department of Botany Central University of Kashmir.</p>",
+      "StartDate": "2021-06-14T00:00:00.000Z",
+      "EndDate": "2021-06-14T00:00:00.000Z",
+      "Venue": "Online Webinar",
+      "RefId": "F3A1CF99-DA38-49A4-A333-847E5FF36CD5",
+      "IsActive": true,
+      "approved": true,
+      "FilePath": "https://cukapi.disgenweb.in/p/event/1652074354985-CUK.jpg",
+      "PdfDocsId": 182
+    },
+    {
+      "Title": "Tributary Virtual Program in the Memory of Legendary Multi Dimensional Scholar Prof. Margoob Banhali",
+      "Description": "<p>&ldquo;The Adbi Markaz Kamraz&rdquo; is going to conduct a condolence meeting on Saturday 29th May 2021, in memory of the late Prof. Margoob Banihali, which is expected to be presided over by the Honorable Vice-Chancellor of the Central University of Kashmir, Ganderbal, Prof Mahraj u din Mir Sahib.</p>",
+      "StartDate": "2021-05-29T00:00:00.000Z",
+      "EndDate": "2021-06-29T00:00:00.000Z",
+      "Venue": "Online",
+      "RefId": "3C64F7FC-47C1-4D31-8143-08CD355E48D0",
+      "IsActive": true,
+      "approved": true,
+      "FilePath": "https://cukapi.disgenweb.in/p/event/1652074354985-CUK.jpg",
+      "PdfDocsId": 178
+    },
+    {
+      "Title": " Lecture on use of Library e-resources during the COVID 19 Pandemic",
+      "Description": "<p style=\"text-align: justify;\">The Sixth series of Lectures on the use of Library e-resources during the COVID 19 Pandemic, is scheduled with the School of Physical &amp; Chemical Sciences on May 29, 2021, (Saturday) at 2.Pm.For further details. kindly contact School of Physical &amp; Chemical Sciences - Central University Of Kashmir.</p>",
+      "StartDate": "2021-05-29T00:00:00.000Z",
+      "EndDate": "2021-07-29T00:00:00.000Z",
+      "Venue": "Online",
+      "RefId": "8DD6DD10-62C6-41D0-A1AA-2E54D638E532",
+      "IsActive": true,
+      "approved": true,
+      "FilePath": "https://cukapi.disgenweb.in/p/event/1652074354985-CUK.jpg",
+      "PdfDocsId": 177
+    },
+    {
+      "Title": "“Use of Google Tools for effective Teaching Learning & Assessment Process”",
+      "Description": "<p style=\"font-weight: 400; text-align: justify;\">It is notified for all faculty members to join the online workshop entitled as &ldquo;<strong><em>Use of Google Tools for effective Teaching Learning &amp; Assessment Proces</em></strong><strong>s</strong>&rdquo;.&nbsp;The Hon&rsquo;ble Vice-Chancellor and worthy Registrar have consented to grace the online event. Mr. Mudasir Ahmad Shah from Edulife Pvt Ltd. will join us as a resource person to demonstrate the use of tools and will give hands-on virtual training, especially for the Google products like Google forms, Jamboard,&nbsp;etc. The workshop will enhance the knowledge of utilizing the free and open-source tools for conducting CIA and other proctored online exams. The&nbsp;<strong><u>Learning Outcomes</u></strong>&nbsp;of the workshop are as follows:</p>\n<ol style=\"text-align: justify;\">\n<li style=\"font-weight: 400;\">Create and Use Google forms for conducting&nbsp;assessments in a proctored way.</li>\n<li style=\"font-weight: 400;\">Use of Google docs and Google Jamboard for collaborative learning.</li>\n<li style=\"font-weight: 400;\">Use of Google classroom in the teaching-learning process.</li>\n<li style=\"font-weight: 400;\">How to give assignments / Homework virtually to students.</li>\n</ol>\n<p style=\"font-weight: 400; text-align: justify;\">The details of the workshop are:</p>\n<p style=\"font-weight: 400; text-align: justify;\">Topic:&nbsp;<strong>Use of Google Tools for effective Teaching Learning &amp; Assessment Process.</strong></p>\n<p style=\"font-weight: 400; text-align: justify;\"><strong>&nbsp;</strong>Date:&nbsp;<strong>25th May 2021&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</strong>Time:&nbsp;<strong>2:00 PM to 4:00 PM&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</strong>Duration:&nbsp;<strong>2 hrs.</strong></p>\n<p style=\"font-weight: 400; text-align: justify;\"><strong>Join Zoom Meeting</strong></p>\n<p style=\"font-weight: 400; text-align: justify;\"><a href=\"https://zoom.us/j/96501124867?pwd=bjY4ZnB5YlpGdmlVdTNQdTYydGU1UT09\" data-saferedirecturl=\"https://www.google.com/url?q=https://zoom.us/j/96501124867?pwd%3DbjY4ZnB5YlpGdmlVdTNQdTYydGU1UT09&amp;source=gmail&amp;ust=1622180701568000&amp;usg=AFQjCNFnR5-wjZKo1mf_Yy6eqpSXj9Nnqg\">https://zoom.us/j/96501124867?pwd=bjY4ZnB5YlpGdmlVdTNQdTYydGU1UT09</a></p>\n<p style=\"font-weight: 400; text-align: justify;\">Meeting ID: 965 0112 4867&nbsp;</p>\n<p style=\"font-weight: 400; text-align: justify;\">Passcode: <a href=\"mailto:cuk@12345\">cuk@12345</a></p>\n<p style=\"font-weight: 400; text-align: justify;\">hello test</p>",
+      "StartDate": "2021-05-25T00:00:00.000Z",
+      "EndDate": "2021-07-25T00:00:00.000Z",
+      "Venue": "Online ",
+      "RefId": "C57A7705-E880-470D-A7F7-3E999A997A0F",
+      "IsActive": true,
+      "approved": true,
+      "FilePath": "https://cukapi.disgenweb.in/p/event/1652074354985-CUK.jpg",
+      "PdfDocsId": 175
+    }
+  ]
+}
