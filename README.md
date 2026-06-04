@@ -143,4 +143,4 @@ streamlit run app.py
 
 ## License
 
-No license has been added yet.
+license has not been added yet. 
